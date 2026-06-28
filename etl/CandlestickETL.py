@@ -59,7 +59,7 @@ class CandlestickETL():
         # other initialization
         #
         self.price_type_list = [price_type_map[q] for q in self.price_types]
-        self.end_date_original = int(time.mktime(datetime.datetime.now().timetuple()))
+        self.end_date_original = int(datetime.datetime.now(tz=self.timezone).timestamp())
         
 
     #
