@@ -51,7 +51,7 @@ class CandlestickETL():
         #
         # initialize (hard-coded)
         #
-        self.timezone_name = 'America/Toronto'   # Don't change this!
+        self.timezone_name = 'America/Toronto'  # canonical timezone for this pipeline; must match critical_timezone.py and ForwardFillInator
         self.timezone = pytz.timezone(self.timezone_name)
         self.start_time = int(self.timezone.localize(datetime.datetime(2009, 12, 31, 23, 59, 59)).timestamp())
         
