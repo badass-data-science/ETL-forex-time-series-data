@@ -27,6 +27,7 @@ class CandlestickETL():
     
         measurement_name = schema_measurement_name,
         error_retry_interval = 2,
+        max_retries = 5,
         keep_complete_only = True,
         count = 5000,
         price_types = 'BA',
@@ -40,6 +41,7 @@ class CandlestickETL():
         self.count = count
         self.price_types = price_types
         self.error_retry_interval = error_retry_interval
+        self.max_retries = max_retries
         self.keep_complete_only = keep_complete_only
         self.measurement_name = measurement_name
 
@@ -51,7 +53,7 @@ class CandlestickETL():
         #
         self.timezone_name = 'America/Toronto'   # Don't change this!
         self.timezone = pytz.timezone(self.timezone_name)
-        self.start_time = int(datetime.datetime(2009, 12, 31, 23, 59, 59, tzinfo=self.timezone).timestamp())
+        self.start_time = int(self.timezone.localize(datetime.datetime(2009, 12, 31, 23, 59, 59)).timestamp())
         
         #
         # other initialization
@@ -105,12 +107,13 @@ class CandlestickETL():
             + '&to=' + str(end_date)
         )
         
-        worked = False
-        while not worked:
+        for attempt in range(self.max_retries):
             try:
-                r = requests.get(url, headers = self.headers)
-                worked = True
-            except:
+                r = requests.get(url, headers=self.headers)
+                break
+            except requests.RequestException:
+                if attempt == self.max_retries - 1:
+                    raise
                 time.sleep(self.error_retry_interval)
         
         rj = r.json()

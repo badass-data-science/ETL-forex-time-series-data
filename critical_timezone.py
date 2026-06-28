@@ -1,7 +1,7 @@
 import pytz
 import datetime
 
-critical_timezone_str = 'America/New_York'
+critical_timezone_str = 'America/Toronto'
 critical_timezone = pytz.timezone(critical_timezone_str)
 
 def is_market_open() -> bool:

@@ -16,7 +16,7 @@ class ForwardFillInator():
         ifc,
         INFLUXDB_BUCKET = 'forex',
         cutoff_timestamp = 1420088160,
-        critical_timezone_str = 'America/New_York',
+        critical_timezone_str = 'America/Toronto',
     ):
         self.instrument = instrument
         self.granularity = granularity
@@ -74,7 +74,7 @@ class ForwardFillInator():
             df = df[~((df['weekday'] == 4) & (df['hour'] == 17))].copy()
             df = df.copy()
         
-        df.sort_values(by = ['unix_epoch_s'])
+        df.sort_values(by = ['unix_epoch_s'], inplace = True)
         df['lagged_unix_epoch_s'] = df['unix_epoch_s'].shift(1)
         df.dropna(inplace = True)  # reconcider this in terms of using a more pandas-like type change
         df['lagged_unix_epoch_s'] = np.int64(df['lagged_unix_epoch_s'])  # use a more pandas-like type change
@@ -173,6 +173,7 @@ class ForwardFillInator():
         del(df)
 
     def fit(self):
+        self.pull_data()
         self.perform_mid_calculations()
         self.perform_spread_calculations()
         self.perform_time_calculations()
