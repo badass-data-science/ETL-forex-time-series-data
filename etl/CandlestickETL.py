@@ -92,7 +92,7 @@ class CandlestickETL():
         
         df_max_time = self.ifc.run_flux_query_on_forex_database_and_get_dataframe(query)
         if len(df_max_time.index) > 0:
-            self.start_time = int(df_max_time['unix_epoch_s'][0]) #.to_pydatetime().timestamp())
+            self.start_time = int(df_max_time['unix_epoch_s'].iloc[0])
     
     #
     # request forex price/volume candlesticks from Oanda
