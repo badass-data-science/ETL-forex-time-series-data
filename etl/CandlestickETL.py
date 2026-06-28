@@ -219,8 +219,10 @@ class CandlestickETL():
                     record_result['time'] = r[key_str]
 
                 else:
-                    pass
-                    # we should throw an error here
+                    raise ValueError(
+                        f"Unexpected field '{key_str}' is not in ALLOWED_FIELDS, ALLOWED_TAGS, or 'timestamp'. "
+                        "Update schema_config if this field is intentional."
+                    )
             self.to_influx_list.append(record_result)
 
     #
