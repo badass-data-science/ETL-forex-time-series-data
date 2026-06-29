@@ -39,8 +39,9 @@ forex/
 │       ├── CandlestickPipeline.py
 │       └── ForwardFillInator.py
 ├── flows/
-│   ├── candlestick_flow.py       # Prefect: fetch → InfluxDB
-│   └── forward_fill_flow.py      # Prefect: forward-fill gaps
+│   ├── candlestick_flow.py       # Prefect: fetch → InfluxDB (single pair + batch)
+│   ├── forward_fill_flow.py      # Prefect: forward-fill gaps
+│   └── serve.py                  # scheduled deployments for all major pairs
 ├── oanda/
 │   ├── headers.py                # builds Oanda auth headers
 │   └── config/price_type_map.py  # bid/ask/mid label mapping
@@ -65,14 +66,30 @@ pip install -e ".[dev]"
 
 ## Running
 
-See [`how_to_start_forex_pipeline.md`](how_to_start_forex_pipeline.md) for full instructions. Quick start:
+See [`how_to_start_forex_pipeline.md`](how_to_start_forex_pipeline.md) for full instructions.
+
+**Scheduled production run — all major pairs:**
+
+```
+OANDA_CONFIG_FILE=/path/to/oanda_config.json python -m forex.flows.serve
+```
+
+This starts three Prefect deployments against a locally running `prefect server`:
+
+| Deployment | Schedule | Granularity |
+|---|---|---|
+| `candlestick-D` | daily at 00:05 UTC | D |
+| `candlestick-H1` | 5 min past each hour | H1 |
+| `candlestick-M15` | 2,17,32,47 min past each hour | M15 |
+
+Each deployment runs all seven major pairs (EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD, NZD/USD) sequentially. The market-hours gate (`critical_timezone.py`) no-ops any run that falls outside forex trading hours (Fri 17:00 ET → Sun 17:00 ET), so no extra cron filtering is needed.
+
+**Ad-hoc single pair:**
 
 ```python
 from forex.flows.candlestick_flow import candlestick_flow
 candlestick_flow(config_file='/path/to/oanda_config.json', instrument='EUR_USD', granularity='H1')
 ```
-
-The market-hours gate (`critical_timezone.py`) skips runs that land outside NYSE trading hours, so you can schedule aggressively without wasted API calls.
 
 ## Data model
 
