@@ -1,64 +1,65 @@
-import numpy as np
 import datetime
-import pprint as pp
+import logging
+import pprint
 
-from forex.etl.config.schema_config import ALLOWED_TAGS, ALLOWED_FIELDS
-from forex.etl.config.database_config import INFLUXDB_BUCKET
-from forex.etl.CandlestickETL import CandlestickETL
+import numpy as np
+
 from forex.critical_timezone import is_market_open
+from forex.etl.CandlestickETL import CandlestickETL
+from forex.etl.config.database_config import INFLUXDB_BUCKET
+from forex.etl.config.schema_config import ALLOWED_FIELDS, ALLOWED_TAGS
 
-class CandlestickPipeline():
+logger = logging.getLogger(__name__)
+
+
+class CandlestickPipeline:
+
     def __init__(
         self,
-        config_file,
-        instrument,
-        granularity,
+        config_file: str,
+        instrument: str,
+        granularity: str,
         ifc,
-        ALLOWED_TAGS = ALLOWED_TAGS,
-        ALLOWED_FIELDS = ALLOWED_FIELDS,
-        INFLUXDB_BUCKET = INFLUXDB_BUCKET,
-        run_test_query = False,
-    ):
+        allowed_tags: set = ALLOWED_TAGS,
+        allowed_fields: dict = ALLOWED_FIELDS,
+        influxdb_bucket: str = INFLUXDB_BUCKET,
+        run_test_query: bool = False,
+    ) -> None:
         self.config_file = config_file
         self.instrument = instrument
         self.granularity = granularity
         self.ifc = ifc
         self.run_test_query = run_test_query
-        self.ALLOWED_TAGS = ALLOWED_TAGS
-        self.ALLOWED_FIELDS = ALLOWED_FIELDS
-        self.INFLUXDB_BUCKET = INFLUXDB_BUCKET
-    
-    def test_whether_market_is_open(self):
+        self.ALLOWED_TAGS = allowed_tags
+        self.ALLOWED_FIELDS = allowed_fields
+        self.INFLUXDB_BUCKET = influxdb_bucket
+
+    def test_whether_market_is_open(self) -> None:
         self.run_it = is_market_open()
         if not self.run_it:
-            print()
-            print('Market is closed.')
-            print()
-        
-    def retrieve_candlestick_data(self):
+            logger.info('Market is closed — skipping run')
+
+    def retrieve_candlestick_data(self) -> None:
         self.cs = CandlestickETL(self.instrument, self.granularity, self.config_file, self.ifc)
         self.cs.fit()
 
-    def qa(self, n = 3):
-        print(self.cs.start_time)
-        print(datetime.datetime.fromtimestamp(self.cs.start_time))
-        print()
-        print(len(self.cs.to_influx_list))
-        print()
-        pp.pprint(self.cs.to_influx_list[0:n])
-        print()
+    def qa(self, n: int = 3) -> None:
+        logger.info('start_time: %s (%s)', self.cs.start_time, datetime.datetime.fromtimestamp(self.cs.start_time))
+        logger.info('record count: %d', len(self.cs.to_influx_list))
+        logger.debug('first %d records:\n%s', n, pprint.pformat(self.cs.to_influx_list[:n]))
 
-    def insert_data(self):
+    def insert_data(self) -> None:
         self.ifc.insert_dictionary_list(
             self.cs.to_influx_list,
             self.ALLOWED_TAGS,
             self.ALLOWED_FIELDS,
             self.INFLUXDB_BUCKET,
         )
+        logger.info('Inserted %d records for %s %s', len(self.cs.to_influx_list), self.instrument, self.granularity)
 
-    def test_query(self):
+    def test_query(self) -> None:
         query = f'''
-            from(bucket: "{INFLUXDB_BUCKET}")
+            from(bucket: "{self.INFLUXDB_BUCKET}")
               |> range(start: 0)
               |> filter(fn: (r) => r._measurement == "candlestick")
               |> filter(fn: (r) => r.granularity == "{self.granularity}")
@@ -70,17 +71,16 @@ class CandlestickPipeline():
               )
               |> drop(columns: ["_start", "_stop", "_measurement"])
         '''
-        
         df = self.ifc.run_flux_query_on_forex_database_and_get_dataframe(query)
-        print(df)
-        
+        logger.info('\n%s', df)
+
         df_agg = df.groupby(['granularity', 'instrument'])['unix_epoch_s'].agg('count')
-        print(df_agg)
-        
+        logger.info('\n%s', df_agg)
+
         test = df.groupby(['granularity', 'instrument', 'unix_epoch_s'])['instrument'].agg('count').to_numpy()
         assert int(np.max(test)) == 1
-        
-    def fit(self):
+
+    def fit(self) -> None:
         self.test_whether_market_is_open()
         if self.run_it:
             self.retrieve_candlestick_data()

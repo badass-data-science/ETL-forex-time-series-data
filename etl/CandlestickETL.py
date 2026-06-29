@@ -1,37 +1,38 @@
-import json
 import datetime
-import pytz
-import requests
+import json
+import logging
+from zoneinfo import ZoneInfo
+
 import pandas as pd
+import requests
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from forex.etl.config.database_config import INFLUXDB_BUCKET
-from forex.etl.config.schema_config import schema_measurement_name, ALLOWED_TAGS, ALLOWED_FIELDS
-
+from forex.etl.config.schema_config import ALLOWED_FIELDS, ALLOWED_TAGS, schema_measurement_name
+from forex.etl.models import CandlestickRecord
 from forex.oanda.config.price_type_map import price_type_map
 from forex.oanda.headers import get_oanda_headers
 
+logger = logging.getLogger(__name__)
 
-class CandlestickETL():
 
-    #
-    # constructor
-    #
+class CandlestickETL:
+
+    TIMEZONE_NAME = 'America/Toronto'  # canonical timezone for this pipeline; must match critical_timezone.py and ForwardFillInator
+
     def __init__(
         self,
-        
-        instrument,
-        granularity,
-        config_file,
+        instrument: str,
+        granularity: str,
+        config_file: str,
         ifc,
-    
-        measurement_name = schema_measurement_name,
-        error_retry_interval = 2,
-        max_retries = 5,
-        keep_complete_only = True,
-        count = 5000,
-        price_types = 'BA',
-    ):
-        
+        measurement_name: str = schema_measurement_name,
+        error_retry_interval: int = 2,
+        max_retries: int = 5,
+        keep_complete_only: bool = True,
+        count: int = 5000,
+        price_types: str = 'BA',
+    ) -> None:
         self.config_file = config_file
         self.instrument = instrument.replace('/', '_')
         self.granularity = granularity
@@ -46,37 +47,19 @@ class CandlestickETL():
 
         self.fields_list = list(ALLOWED_FIELDS.keys())
         self.tags_list = ALLOWED_TAGS
-        
-        #
-        # initialize (hard-coded)
-        #
-        self.timezone_name = 'America/Toronto'  # canonical timezone for this pipeline; must match critical_timezone.py and ForwardFillInator
-        self.timezone = pytz.timezone(self.timezone_name)
-        self.start_time = int(self.timezone.localize(datetime.datetime(2009, 12, 31, 23, 59, 59)).timestamp())
-        
-        #
-        # other initialization
-        #
         self.price_type_list = [price_type_map[q] for q in self.price_types]
-        self.end_date_original = int(datetime.datetime.now(tz=self.timezone).timestamp())
-        
 
-    #
-    # get headers from the configuration
-    #
-    def get_headers(self):
+        self.timezone = ZoneInfo(self.TIMEZONE_NAME)
+        self.start_time = int(datetime.datetime(2009, 12, 31, 23, 59, 59, tzinfo=self.timezone).timestamp())
+        self.end_date_original = int(datetime.datetime.now(tz=self.timezone).timestamp())
+
+    def get_headers(self) -> None:
         with open(self.config_file) as f:
             self.config = json.load(f)
         self.headers = get_oanda_headers(self.config)
 
-    #
-    # figure out the maximum time in the database
-    # per instrument and granularity
-    #
-    def get_max_previous_time(self):
-        
+    def get_max_previous_time(self) -> None:
         instrument_str = self.instrument.replace('_', '/')
-        
         query = f'''
         from(bucket: "{INFLUXDB_BUCKET}")
           |> range(start: 0)
@@ -88,15 +71,26 @@ class CandlestickETL():
           |> group(columns: ["granularity", "instrument"])
           |> max(column: "_time")
         '''
-        
         df_max_time = self.ifc.run_flux_query_on_forex_database_and_get_dataframe(query)
         if len(df_max_time.index) > 0:
             self.start_time = int(df_max_time['unix_epoch_s'].iloc[0])
-    
-    #
-    # request forex price/volume candlesticks from Oanda
-    #
-    def get_instrument_candlesticks(self, end_date):
+            logger.info(
+                'Resuming from %s',
+                datetime.datetime.fromtimestamp(self.start_time, tz=self.timezone),
+            )
+
+    @retry(
+        stop=stop_after_attempt(5),
+        wait=wait_fixed(2),
+        retry=retry_if_exception_type(requests.RequestException),
+        reraise=True,
+    )
+    def _fetch_from_api(self, url: str) -> dict:
+        r = requests.get(url, headers=self.headers)
+        r.raise_for_status()
+        return r.json()
+
+    def get_instrument_candlesticks(self, end_date: float) -> dict:
         url = (
             self.config['server']
             + '/v3/instruments/' + self.instrument
@@ -105,136 +99,77 @@ class CandlestickETL():
             + '&granularity=' + self.granularity
             + '&to=' + str(end_date)
         )
-        
-        for attempt in range(self.max_retries):
-            try:
-                r = requests.get(url, headers=self.headers)
-                break
-            except requests.RequestException:
-                if attempt == self.max_retries - 1:
-                    raise
-                time.sleep(self.error_retry_interval)
-        
-        rj = r.json()
-        return rj
+        logger.debug('Fetching candlesticks to %s', end_date)
+        return self._fetch_from_api(url)
 
-    #
-    # compute additional forex candlestick features
-    #
-    def compute_candle_features(self):
-        
+    def compute_candle_features(self) -> None:
         finished = False
         end_date = self.end_date_original
+        self.insert_many_list: list[dict] = []
 
-        self.insert_many_list = []
-
-        # loop through the timestamp ranges for each set of n=count values
         while not finished:
-
-            # retrieve the instrument candlesticks from the Oanda server
-            rj = self.get_instrument_candlesticks(end_date) # instrument, count, price_types, granularity, end_date)        
+            rj = self.get_instrument_candlesticks(end_date)
             candlesticks = rj['candles']
 
-            #
-            # deal with timestamps and time-related content
-            #
             date_list = []
             for candle in candlesticks:
                 candle['instrument'] = self.instrument.replace('_', '/')
                 candle['granularity'] = self.granularity
                 candle['time'] = int(float(candle['time']))
-                time_dt = datetime.datetime.fromtimestamp(candle['time'], tz = self.timezone)
+                time_dt = datetime.datetime.fromtimestamp(candle['time'], tz=self.timezone)
                 candle['time_iso'] = time_dt.isoformat()
 
                 for price_type in self.price_type_list:
-                    for candlestick_component in candle[price_type].keys():
-                        candle[price_type + '_' + candlestick_component] = float(candle[price_type][candlestick_component])
-                    
+                    for component in candle[price_type]:
+                        candle[f'{price_type}_{component}'] = float(candle[price_type][component])
                 for price_type in self.price_type_list:
-                    del(candle[price_type])
+                    del candle[price_type]
 
-                if self.keep_complete_only:
-                    if candle['complete']:    
-                        self.insert_many_list.append(candle)
-                else:
+                if not self.keep_complete_only or candle['complete']:
                     self.insert_many_list.append(candle)
 
                 date_list.append(candle['time'])
 
-            # Are we done?
-            if (len(date_list) < self.count) or (min(date_list) < self.start_time):
+            if len(date_list) < self.count or min(date_list) < self.start_time:
                 finished = True
             else:
-                # prepare for the next iteration
                 end_date = min(date_list) - 0.1
 
-    #
-    # Create a dataframe
-    #
-    def create_dataframe(self):
-        self.df = pd.DataFrame(self.insert_many_list).sort_values(by = ['instrument', 'time'])
-        self.df = self.df[self.df['time'] >= int(self.start_time)]
-        self.df = self.df.reset_index().drop(columns = ['index']).copy()
+        logger.info('Fetched %d candlesticks for %s %s', len(self.insert_many_list), self.instrument, self.granularity)
 
-        self.time_filtered_df = self.df[self.df['time'] > self.start_time].sort_values(by = ['time']).copy()
-        self.to_insert = self.time_filtered_df.to_dict(orient = 'records')
+    def create_dataframe(self) -> None:
+        self.df = (
+            pd.DataFrame(self.insert_many_list)
+            .sort_values(by=['instrument', 'time'])
+            .reset_index(drop=True)
+        )
+        self.df = self.df[self.df['time'] >= int(self.start_time)].reset_index(drop=True)
 
-    #
-    # clean up teh dataframe
-    #
-    def clean_up_dataframe(self):
-        new_name_dict = {}
-        for price_type in self.price_type_list:
-            for old_name, new_name in zip(['o', 'l', 'h', 'c'], ['open', 'low', 'high', 'close']):
-                new_name_dict[price_type + '_' + old_name] = price_type + '_' + new_name
-        self.df.rename(columns = new_name_dict, inplace = True)
-        self.df.drop(columns = ['time_iso'], inplace = True)
+        self.time_filtered_df = self.df[self.df['time'] > self.start_time].sort_values(by=['time']).copy()
+        self.to_insert = self.time_filtered_df.to_dict(orient='records')
 
-        self.df.rename(columns = {'time' : 'timestamp'}, inplace = True)
-        
-        self.df['instrument'] = self.df['instrument'].replace('_', '/')
+    def qa(self) -> None:
+        duplicates = self.df.duplicated(subset=['time'])
+        assert not duplicates.any(), f'Duplicate timestamps: {self.df[duplicates]["time"].tolist()}'
 
-    #
-    # compute the dictionary used to populate the InfluxDB bucket
-    #
-    def make_the_InfluxDB_dict(self):
-      
-        # parallelize this later?
-        
-        self.to_influx_list = []
-        for r in self.df.to_dict(orient = 'records'):
-            record_result = {'measurement' : self.measurement_name, 'fields' : {}, 'tags' : {}}
-            for key in r.keys():
-                key_str = str(key) # not sure this is necessary
+    def clean_up_dataframe(self) -> None:
+        rename_map = {
+            f'{pt}_{old}': f'{pt}_{new}'
+            for pt in self.price_type_list
+            for old, new in zip(['o', 'l', 'h', 'c'], ['open', 'low', 'high', 'close'])
+        }
+        self.df.rename(columns=rename_map, inplace=True)
+        self.df.drop(columns=['time_iso'], inplace=True)
+        self.df.rename(columns={'time': 'timestamp'}, inplace=True)
 
-                # make these lists variables
-                if key_str in self.tags_list:
-                    record_result['tags'][key_str] = r[key_str]
+    def make_the_InfluxDB_dict(self) -> None:
+        self.to_influx_list = [
+            CandlestickRecord(**r).to_influx_dict()
+            for r in self.df.to_dict(orient='records')
+        ]
+        logger.info('Prepared %d records for InfluxDB', len(self.to_influx_list))
 
-                elif key_str in self.fields_list:
-                    record_result['fields'][key_str] = r[key_str]
-
-                elif key_str in ['timestamp']:
-                    record_result['time'] = r[key_str]
-
-                else:
-                    raise ValueError(
-                        f"Unexpected field '{key_str}' is not in ALLOWED_FIELDS, ALLOWED_TAGS, or 'timestamp'. "
-                        "Update schema_config if this field is intentional."
-                    )
-            self.to_influx_list.append(record_result)
-
-    #
-    # QA
-    #
-    def qa(self):
-        assert len(self.df.index) == len(self.df[['time']].drop_duplicates())
-        assert len(self.df.index) == len(self.df['time'].unique())
-
-    #
-    # Run everything
-    #
-    def fit(self):
+    def fit(self) -> None:
         self.get_headers()
         self.get_max_previous_time()
         self.compute_candle_features()

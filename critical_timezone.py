@@ -1,24 +1,22 @@
-import pytz
 import datetime
+from zoneinfo import ZoneInfo
 
 critical_timezone_str = 'America/Toronto'
-critical_timezone = pytz.timezone(critical_timezone_str)
+critical_timezone = ZoneInfo(critical_timezone_str)  # canonical timezone for this pipeline
+
 
 def is_market_open() -> bool:
-    now = datetime.datetime.now(critical_timezone)
-    return is_market_open_at_time(now)
+    return is_market_open_at_time(datetime.datetime.now(critical_timezone))
 
-def is_market_open_at_time(given_time : datetime.datetime) -> bool:
+
+def is_market_open_at_time(given_time: datetime.datetime) -> bool:
     weekday = given_time.weekday()
     hour = given_time.hour
-    is_open = True
 
-    if (weekday == 4) & (hour >= 17):  # Friday
-        is_open = False
-    if weekday == 5:  # Saturday
-        is_open = False
-    if (weekday == 6) & (hour < 17):  # Sunday
-        is_open = False
-
-    return is_open
-
+    if weekday == 4 and hour >= 17:   # Friday close
+        return False
+    if weekday == 5:                   # Saturday
+        return False
+    if weekday == 6 and hour < 17:    # Sunday pre-open
+        return False
+    return True

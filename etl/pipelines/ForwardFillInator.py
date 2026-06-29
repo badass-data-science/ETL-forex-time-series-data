@@ -1,31 +1,38 @@
+import logging
+from zoneinfo import ZoneInfo
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 from forex.critical_timezone import is_market_open_at_time
 from forex.eda.eda_config.eda_config import granularity_to_seconds_map
 
-class ForwardFillInator():
+logger = logging.getLogger(__name__)
+
+
+class ForwardFillInator:
 
     candlestick_part_list = ['open', 'low', 'high', 'close']
-    
+
     def __init__(
         self,
-        instrument,
-        granularity,
+        instrument: str,
+        granularity: str,
         ifc,
-        INFLUXDB_BUCKET = 'forex',
-        cutoff_timestamp = 1420088160,
-        critical_timezone_str = 'America/Toronto',
-    ):
+        influxdb_bucket: str = 'forex',
+        cutoff_timestamp: int = 1420088160,
+        critical_timezone_str: str = 'America/Toronto',
+    ) -> None:
         self.instrument = instrument
         self.granularity = granularity
         self.ifc = ifc
-        self.INFLUXDB_BUCKET = INFLUXDB_BUCKET
+        self.INFLUXDB_BUCKET = influxdb_bucket
         self.cutoff_timestamp = cutoff_timestamp
         self.critical_timezone_str = critical_timezone_str
-    
-    def pull_data(self):
+        self.critical_timezone = ZoneInfo(critical_timezone_str)
+
+    def pull_data(self) -> None:
         query = f'''
             start_s = {self.cutoff_timestamp}
             from(bucket: "{self.INFLUXDB_BUCKET}")
@@ -40,24 +47,22 @@ class ForwardFillInator():
               )
               |> drop(columns: ["_start", "_stop", "_measurement"])
         '''
-        
         df = self.ifc.run_flux_query_on_forex_database_and_get_dataframe(query)
         df = df[df['complete']]
-        df.drop(columns = ['complete', 'instrument', 'granularity'], inplace = True)
-        df.sort_values(by = ['unix_epoch_s'], inplace = True)
-        
+        df.drop(columns=['complete', 'instrument', 'granularity'], inplace=True)
+        df.sort_values(by=['unix_epoch_s'], inplace=True)
         self.df = df.copy()
-        del(df)
+        logger.info('Pulled %d rows for %s %s', len(self.df), self.instrument, self.granularity)
 
-    def perform_mid_calculations(self):
+    def perform_mid_calculations(self) -> None:
         for cp in self.candlestick_part_list:
-            self.df['mid_' + cp] = self.df[['ask_' + cp, 'bid_' + cp]].mean(axis = 1)
+            self.df[f'mid_{cp}'] = self.df[[f'ask_{cp}', f'bid_{cp}']].mean(axis=1)
 
-    def perform_spread_calculations(self):
+    def perform_spread_calculations(self) -> None:
         for cp in self.candlestick_part_list:
-            self.df['spread_' + cp] = self.df['ask_' + cp] - self.df['bid_' + cp]
+            self.df[f'spread_{cp}'] = self.df[f'ask_{cp}'] - self.df[f'bid_{cp}']
 
-    def perform_time_calculations(self, cut_Friday_hour_17 = True):
+    def perform_time_calculations(self, cut_friday_hour_17: bool = True) -> None:
         df = self.df[self.df['unix_epoch_s'] >= self.cutoff_timestamp].copy()
 
         df['datetime'] = (
@@ -65,114 +70,101 @@ class ForwardFillInator():
             .dt.tz_convert(self.critical_timezone_str)
         )
 
-        # use an apply here if possible
-        df['weekday'] = [x.weekday() for x in df['datetime']]
-        df['hour'] = [x.hour for x in df['datetime']]
-        df['minute'] = [x.minute for x in df['datetime']]
+        df['weekday'] = df['datetime'].dt.weekday
+        df['hour'] = df['datetime'].dt.hour
+        df['minute'] = df['datetime'].dt.minute
 
-        if cut_Friday_hour_17:
+        if cut_friday_hour_17:
             df = df[~((df['weekday'] == 4) & (df['hour'] == 17))].copy()
-            df = df.copy()
-        
-        df.sort_values(by = ['unix_epoch_s'], inplace = True)
-        df['lagged_unix_epoch_s'] = df['unix_epoch_s'].shift(1)
-        df.dropna(inplace = True)  # reconcider this in terms of using a more pandas-like type change
-        df['lagged_unix_epoch_s'] = np.int64(df['lagged_unix_epoch_s'])  # use a more pandas-like type change
-        df['diff_unix_epoch_s'] = df['unix_epoch_s'] - df['lagged_unix_epoch_s']
-        
-        self.df = df.copy().reset_index().drop(columns = ['index'])
-        del(df)
 
-    def weekday_hour_qa(self):
+        df.sort_values(by=['unix_epoch_s'], inplace=True)
+        df['lagged_unix_epoch_s'] = df['unix_epoch_s'].shift(1)
+        df.dropna(inplace=True)
+        df['lagged_unix_epoch_s'] = df['lagged_unix_epoch_s'].astype(np.int64)
+        df['diff_unix_epoch_s'] = df['unix_epoch_s'] - df['lagged_unix_epoch_s']
+
+        self.df = df.reset_index(drop=True)
+
+    def weekday_hour_qa(self) -> None:
         self.df_weekday_hour_agg = self.df.groupby(['weekday', 'hour'])['unix_epoch_s'].agg('count').reset_index()
 
-    def compute_df_all_time_diff_market_open(self):
-        
-        #
-        # produce an array/DataFrame containing the full range of dates
-        #
-        # we'll want to revisit the "granularity_to_seconds_map" dictionary
-        #
+    def compute_df_all_time_diff_market_open(self) -> None:
         mn = np.min(self.df['unix_epoch_s'])
         mx = np.max(self.df['unix_epoch_s'])
-        unix_epoch_s_array = np.arange(
-            mn,
-            mx + granularity_to_seconds_map[self.granularity],
-            granularity_to_seconds_map[self.granularity],
-        )
-        df = pd.DataFrame({'unix_epoch_s' : unix_epoch_s_array})
+        step = granularity_to_seconds_map[self.granularity]
+        unix_epoch_s_array = np.arange(mn, mx + step, step)
 
-        # compute the datetime from the full unix epoch time data
+        df = pd.DataFrame({'unix_epoch_s': unix_epoch_s_array})
+
         df['datetime_test'] = (
             pd.to_datetime(df['unix_epoch_s'], unit='s', utc=True)
             .dt.tz_convert(self.critical_timezone_str)
         )
 
-        # try an apply command here or see if pandas has native commands for this
-        df['weekday_test'] = [x.weekday() for x in df['datetime_test']]
-        df['hour_test'] = [x.hour for x in df['datetime_test']]
-        df['minute_test'] = [x.minute for x in df['datetime_test']]
-        
-        # use an apply command
-        df['is_market_open'] = [is_market_open_at_time(x) for x in df['datetime_test']]
+        df['weekday_test'] = df['datetime_test'].dt.weekday
+        df['hour_test'] = df['datetime_test'].dt.hour
+        df['minute_test'] = df['datetime_test'].dt.minute
 
-        # join our previous data to full date range
-        df = pd.merge(df, self.df, on = ['unix_epoch_s'], how = 'left')
+        # Vectorised market-open flag — equivalent to is_market_open_at_time row-by-row
+        df['is_market_open'] = ~(
+            ((df['weekday_test'] == 4) & (df['hour_test'] >= 17)) |
+            (df['weekday_test'] == 5) |
+            ((df['weekday_test'] == 6) & (df['hour_test'] < 17))
+        )
 
-        # QA
+        df = pd.merge(df, self.df, on=['unix_epoch_s'], how='left')
+
+        # QA: time columns must agree between the full grid and the pulled data
         df_to_test = df.dropna()
         assert np.min(np.int8((df_to_test['datetime_test'] == df_to_test['datetime']).values)) == 1
         assert np.min(np.int8((df_to_test['weekday_test'] == df_to_test['weekday']).values)) == 1
         assert np.min(np.int8((df_to_test['hour_test'] == df_to_test['hour']).values)) == 1
         assert np.min(np.int8((df_to_test['minute_test'] == df_to_test['minute']).values)) == 1
 
-        # drop and rename some columns
-        df.drop(columns = ['datetime', 'weekday', 'hour', 'minute'], inplace = True)
-        df.rename(
-            columns = {'datetime_test' : 'datetime', 'weekday_test' : 'weekday', 'hour_test' : 'hour', 'minute_test' : 'minute'},
-            inplace = True,
-        )
-        df.drop(columns = ['lagged_unix_epoch_s', 'diff_unix_epoch_s'], inplace = True)
+        df.drop(columns=['datetime', 'weekday', 'hour', 'minute'], inplace=True)
+        df.rename(columns={
+            'datetime_test': 'datetime',
+            'weekday_test': 'weekday',
+            'hour_test': 'hour',
+            'minute_test': 'minute',
+        }, inplace=True)
+        df.drop(columns=['lagged_unix_epoch_s', 'diff_unix_epoch_s'], inplace=True)
 
-        # keep only rows when the market is open
-        df = df[df['is_market_open']].copy()
-        df.drop(columns = ['is_market_open'], inplace = True)
+        df = df[df['is_market_open']].drop(columns=['is_market_open']).copy()
 
-        # prepare for QA
-        df.sort_values(by = ['unix_epoch_s'], inplace = True)
+        df.sort_values(by=['unix_epoch_s'], inplace=True)
         df['lagged_unix_epoch_s'] = df['unix_epoch_s'].shift(1)
-        df.dropna(subset = ['lagged_unix_epoch_s'], inplace = True)
+        df.dropna(subset=['lagged_unix_epoch_s'], inplace=True)
         df['diff_unix_epoch_s'] = df['unix_epoch_s'] - df['lagged_unix_epoch_s']
-        
-        # QA
+
         df_to_test = df.groupby(['diff_unix_epoch_s'])['volume'].agg('count').reset_index()
-        df_to_test['diff_unix_epoch_s'] = np.int64(df_to_test['diff_unix_epoch_s'].values)
-        df_to_test.rename(columns = {'volume' : 'count'}, inplace = True)
+        df_to_test['diff_unix_epoch_s'] = df_to_test['diff_unix_epoch_s'].astype(np.int64)
+        df_to_test.rename(columns={'volume': 'count'}, inplace=True)
         self.df_all_time_diff_market_open_agg_test = df_to_test
 
-        # finalize data types
         df['lagged_unix_epoch_s'] = df['lagged_unix_epoch_s'].astype('int64')
         df['diff_unix_epoch_s'] = df['diff_unix_epoch_s'].astype('int64')
-        df['volume'] = df['volume'].astype('Int64') # note capitalization for nullable type
+        df['volume'] = df['volume'].astype('Int64')
 
-        # save results to class
-        self.df_all_time_diff_market_open = df.copy()
-        del(df)
+        self.df_all_time_diff_market_open = df.reset_index(drop=True)
+        logger.info(
+            'Full market-open grid: %d rows (%d non-null)',
+            len(self.df_all_time_diff_market_open),
+            self.df_all_time_diff_market_open['volume'].notna().sum(),
+        )
 
-    #
-    # We'll come up with a more robust method in the near future
-    #
-    def account_for_holiday_market_closure(self):
-        self.df_all_time_diff_market_open.dropna(inplace = True)
-    
-    def forward_fill_it(self):
-        df = self.df_all_time_diff_market_open.copy()
-        df.sort_values(by = ['unix_epoch_s'], inplace = True)  # "insurance"
-        df.ffill(inplace = True)
+    def account_for_holiday_market_closure(self) -> None:
+        # Drops rows with all-NaN OHLCV data that correspond to unmodelled holidays.
+        # TODO: replace with an explicit holiday calendar.
+        self.df_all_time_diff_market_open.dropna(inplace=True)
+
+    def forward_fill_it(self) -> None:
+        df = self.df_all_time_diff_market_open.sort_values(by=['unix_epoch_s'])
+        df.ffill(inplace=True)
         self.df_all_time_diff_market_open_forward_filled = df.copy()
-        del(df)
+        logger.info('Forward-filled %d rows', len(self.df_all_time_diff_market_open_forward_filled))
 
-    def fit(self):
+    def fit(self) -> None:
         self.pull_data()
         self.perform_mid_calculations()
         self.perform_spread_calculations()
@@ -182,11 +174,11 @@ class ForwardFillInator():
         self.account_for_holiday_market_closure()
         self.forward_fill_it()
 
-    def plot_NaNs_vs_time(self):
+    def plot_NaNs_vs_time(self) -> None:
         x = self.df_all_time_diff_market_open['datetime'].values
-        y = np.int8((~(self.df_all_time_diff_market_open['volume'].isna())).values)
-        plt.figure(figsize = [10, 3])
-        plt.plot(x, y, '.', color = 'magenta')
+        y = np.int8((~self.df_all_time_diff_market_open['volume'].isna()).values)
+        plt.figure(figsize=[10, 3])
+        plt.plot(x, y, '.', color='magenta')
         plt.yticks([0, 1], [True, False])
         plt.ylim([-0.4, 1.4])
         plt.ylabel('NaN')
