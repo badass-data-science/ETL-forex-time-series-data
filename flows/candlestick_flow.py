@@ -1,14 +1,11 @@
 """
-Prefect flow: fetch Oanda candlesticks → InfluxDB.
+Prefect flows: fetch Oanda candlesticks → InfluxDB.
 
-Deploy:
+Single pair (ad-hoc):
     python -m forex.flows.candlestick_flow
 
-Run ad-hoc:
-    prefect run -m forex.flows.candlestick_flow \
-        --param config_file=/path/to/config.json \
-        --param instrument=EUR/USD \
-        --param granularity=H1
+All major pairs on a schedule:
+    python -m forex.flows.serve
 """
 
 from prefect import flow, task, get_run_logger
@@ -53,12 +50,29 @@ def insert_to_influxdb(records: list[dict]) -> None:
     logger.info('Inserted %d records', len(records))
 
 
+MAJOR_PAIRS: list[str] = [
+    'EUR_USD', 'USD_JPY', 'GBP_USD', 'USD_CHF',
+    'USD_CAD', 'AUD_USD', 'NZD_USD',
+]
+
+
 @flow(name='forex-candlestick-etl', log_prints=True)
 def candlestick_flow(config_file: str, instrument: str, granularity: str) -> None:
     if not check_market_open_task():
         return
     records = fetch_candlestick_data(config_file, instrument, granularity)
     insert_to_influxdb(records)
+
+
+@flow(name='forex-candlestick-batch', log_prints=True)
+def candlestick_batch_flow(
+    config_file: str,
+    granularity: str,
+    instruments: list[str] = MAJOR_PAIRS,
+) -> None:
+    """Run candlestick_flow for each instrument sequentially."""
+    for instrument in instruments:
+        candlestick_flow(config_file=config_file, instrument=instrument, granularity=granularity)
 
 
 if __name__ == '__main__':
