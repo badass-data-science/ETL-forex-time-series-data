@@ -1,4 +1,4 @@
-There are two entry points depending on whether you want a one-off run or a scheduled deployment.
+There are two entry points: a one-off run for a single pair, and a scheduled deployment that covers all seven major pairs across three granularities.
 
 # Prerequisites
 
@@ -13,6 +13,8 @@ You also need:
 
 # Option 1 — One-off run (no Prefect server needed)
 
+Single candlestick pair:
+
 ```python
 from forex.flows.candlestick_flow import candlestick_flow
 candlestick_flow(
@@ -22,57 +24,77 @@ candlestick_flow(
 )
 ```
 
-For the forward-fill:
+All major pairs for one granularity:
+
+```python
+from forex.flows.candlestick_flow import candlestick_batch_flow
+candlestick_batch_flow(config_file='/path/to/oanda_config.json', granularity='H1')
+```
+
+Forward-fill gaps for one pair:
 
 ```python
 from forex.flows.forward_fill_flow import forward_fill_flow
 forward_fill_flow(instrument='EUR/USD', granularity='H1')
 ```
 
-# Option 2 — Persistent deployment (replaces the old cron job)
+# Option 2 — Scheduled deployment (all major pairs, three granularities)
 
-Start a local Prefect server once:
+Start a local Prefect server once (in its own terminal or as a service):
 
 ```
 prefect server start
 ```
 
-Then deploy and serve each flow in its own terminal (or as a systemd service):
+Then start the serve process, which registers and runs all three deployments:
 
 ```
-# Terminal 1 — candlestick fetch
-python -m forex.flows.candlestick_flow
+OANDA_CONFIG_FILE=/path/to/oanda_config.json python -m forex.flows.serve
 ```
 
+This registers three deployments visible at http://localhost:4200:
+
+| Deployment | Cron | Granularity | Pairs |
+|---|---|---|---|
+| `candlestick-D` | `5 0 * * *` | D | all 7 majors |
+| `candlestick-H1` | `5 * * * *` | H1 | all 7 majors |
+| `candlestick-M15` | `2,17,32,47 * * * *` | M15 | all 7 majors |
+
+The seven major pairs are: EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD, NZD/USD.
+
+The market-hours gate (`check_market_open_task`) no-ops any run outside forex trading hours (Fri 17:00 ET → Sun 17:00 ET), so no extra cron filtering is needed.
+
+To trigger a deployment run manually from the CLI:
+
 ```
-# Terminal 2 — forward fill
-python -m forex.flows.forward_fill_flow
+prefect deployment run 'forex-candlestick-batch/candlestick-H1' \
+  --param config_file=/path/to/oanda_config.json \
+  --param granularity=H1
 ```
 
-Then trigger runs from the Prefect UI (http://localhost:4200) or CLI:
+To run a single pair ad-hoc against a live Prefect server:
 
 ```
 prefect deployment run 'forex-candlestick-etl/forex-candlestick-etl' \
   --param config_file=/path/to/oanda_config.json \
-  --param instrument=EUR/USD \
+  --param instrument=EUR_USD \
   --param granularity=H1
 ```
 
-# Scheduling (equivalent to the old cron job)
+# Scheduling (custom pairs or granularities)
 
-Add a schedule to the `.serve()` call in `candlestick_flow.py`:
+To customise which instruments or add a new granularity, pass `instruments` when triggering a batch run:
 
 ```python
-# forex/flows/candlestick_flow.py
-if __name__ == '__main__':
-    from prefect.schedules import CronSchedule
-    candlestick_flow.serve(
-        name='forex-candlestick-etl',
-        schedules=[CronSchedule(cron='*/15 * * * 1-5')]  # every 15min Mon-Fri
-    )
+from forex.flows.candlestick_flow import candlestick_batch_flow
+candlestick_batch_flow(
+    config_file='/path/to/oanda_config.json',
+    granularity='M5',
+    instruments=['EUR_USD', 'GBP_USD'],
+)
 ```
 
-The market-hours gate (`check_market_open_task`) already handles runs that land outside trading hours — it returns early without fetching, so the schedule can be aggressive without wasted API calls.
+Or modify `MAJOR_PAIRS` in `flows/candlestick_flow.py` and restart `serve.py`.
 
 # Data model
 
