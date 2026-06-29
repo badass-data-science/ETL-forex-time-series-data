@@ -8,7 +8,6 @@ import requests
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from forex.etl.config.database_config import INFLUXDB_BUCKET
-from forex.etl.config.schema_config import ALLOWED_FIELDS, ALLOWED_TAGS, schema_measurement_name
 from forex.etl.models import CandlestickRecord
 from forex.oanda.config.price_type_map import price_type_map
 from forex.oanda.headers import get_oanda_headers
@@ -26,7 +25,7 @@ class CandlestickETL:
         granularity: str,
         config_file: str,
         ifc,
-        measurement_name: str = schema_measurement_name,
+        measurement_name: str = CandlestickRecord.MEASUREMENT,
         error_retry_interval: int = 2,
         max_retries: int = 5,
         keep_complete_only: bool = True,
@@ -45,8 +44,6 @@ class CandlestickETL:
         self.keep_complete_only = keep_complete_only
         self.measurement_name = measurement_name
 
-        self.fields_list = list(ALLOWED_FIELDS.keys())
-        self.tags_list = ALLOWED_TAGS
         self.price_type_list = [price_type_map[q] for q in self.price_types]
 
         self.timezone = ZoneInfo(self.TIMEZONE_NAME)

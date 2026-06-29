@@ -25,6 +25,18 @@ class CandlestickRecord(BaseModel):
 
     TAGS: ClassVar[frozenset[str]] = frozenset({'instrument', 'granularity'})
     MEASUREMENT: ClassVar[str] = 'candlestick'
+    FIELDS: ClassVar[dict[str, type]] = {
+        'volume': int,
+        'complete': bool,
+        'bid_open': float,
+        'bid_high': float,
+        'bid_low': float,
+        'bid_close': float,
+        'ask_open': float,
+        'ask_high': float,
+        'ask_low': float,
+        'ask_close': float,
+    }
 
     def to_influx_dict(self) -> dict:
         data = self.model_dump()

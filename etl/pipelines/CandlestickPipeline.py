@@ -7,7 +7,7 @@ import numpy as np
 from forex.critical_timezone import is_market_open
 from forex.etl.CandlestickETL import CandlestickETL
 from forex.etl.config.database_config import INFLUXDB_BUCKET
-from forex.etl.config.schema_config import ALLOWED_FIELDS, ALLOWED_TAGS
+from forex.etl.models import CandlestickRecord
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +20,8 @@ class CandlestickPipeline:
         instrument: str,
         granularity: str,
         ifc,
-        allowed_tags: set = ALLOWED_TAGS,
-        allowed_fields: dict = ALLOWED_FIELDS,
+        allowed_tags: set = CandlestickRecord.TAGS,
+        allowed_fields: dict = CandlestickRecord.FIELDS,
         influxdb_bucket: str = INFLUXDB_BUCKET,
         run_test_query: bool = False,
     ) -> None:

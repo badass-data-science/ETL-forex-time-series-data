@@ -16,7 +16,7 @@ from prefect import flow, task, get_run_logger
 from forex.critical_timezone import is_market_open
 from forex.etl.CandlestickETL import CandlestickETL
 from forex.etl.config.database_config import INFLUXDB_BUCKET, INFLUXDB_ORG, INFLUXDB_TOKEN, INFLUXDB_URL
-from forex.etl.config.schema_config import ALLOWED_FIELDS, ALLOWED_TAGS
+from forex.etl.models import CandlestickRecord
 from python_tools_and_shortcuts.databases.influxdb.InfluxDbTool import InfluxDbTool
 
 
@@ -49,7 +49,7 @@ def insert_to_influxdb(records: list[dict]) -> None:
         logger.info('No new records to insert')
         return
     ifc = _make_ifc()
-    ifc.insert_dictionary_list(records, ALLOWED_TAGS, ALLOWED_FIELDS, INFLUXDB_BUCKET)
+    ifc.insert_dictionary_list(records, CandlestickRecord.TAGS, CandlestickRecord.FIELDS, INFLUXDB_BUCKET)
     logger.info('Inserted %d records', len(records))
 
 
