@@ -7,7 +7,7 @@ import pandas as pd
 import requests
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
-from forex.etl.config.database_config import INFLUXDB_BUCKET
+from forex.etl.config import database_config
 from forex.etl.models import CandlestickRecord
 from forex.oanda.config.price_type_map import price_type_map
 from forex.oanda.headers import get_oanda_headers
@@ -58,7 +58,7 @@ class CandlestickETL:
     def get_max_previous_time(self) -> None:
         instrument_str = self.instrument.replace('_', '/')
         query = f'''
-        from(bucket: "{INFLUXDB_BUCKET}")
+        from(bucket: "{database_config.INFLUXDB_BUCKET}")
           |> range(start: 0)
           |> filter(fn: (r) => r._measurement == "candlestick")
           |> filter(fn: (r) => r.instrument == "{instrument_str}")

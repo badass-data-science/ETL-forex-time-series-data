@@ -6,7 +6,7 @@ import numpy as np
 
 from forex.critical_timezone import is_market_open
 from forex.etl.CandlestickETL import CandlestickETL
-from forex.etl.config.database_config import INFLUXDB_BUCKET
+from forex.etl.config import database_config
 from forex.etl.models import CandlestickRecord
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ class CandlestickPipeline:
         ifc,
         allowed_tags: set = CandlestickRecord.TAGS,
         allowed_fields: dict = CandlestickRecord.FIELDS,
-        influxdb_bucket: str = INFLUXDB_BUCKET,
+        influxdb_bucket: str | None = None,
         run_test_query: bool = False,
     ) -> None:
         self.config_file = config_file
@@ -32,7 +32,12 @@ class CandlestickPipeline:
         self.run_test_query = run_test_query
         self.ALLOWED_TAGS = allowed_tags
         self.ALLOWED_FIELDS = allowed_fields
-        self.INFLUXDB_BUCKET = influxdb_bucket
+        # database_config.INFLUXDB_BUCKET is resolved here, not as the parameter's
+        # default value -- a default value is evaluated once at class-definition
+        # (i.e. import) time, which would trigger database_config's lazy AWS Secrets
+        # Manager load merely by importing this module, same bug class as importing
+        # `from database_config import X` at module top level.
+        self.INFLUXDB_BUCKET = influxdb_bucket if influxdb_bucket is not None else database_config.INFLUXDB_BUCKET
 
     def test_whether_market_is_open(self) -> None:
         self.run_it = is_market_open()

@@ -12,7 +12,7 @@ Run ad-hoc:
 
 from prefect import flow, task, get_run_logger
 
-from forex.etl.config.database_config import INFLUXDB_BUCKET, INFLUXDB_ORG, INFLUXDB_TOKEN, INFLUXDB_URL
+from forex.etl.config import database_config
 from forex.etl.models import ForwardFilledCandlestickRecord
 from forex.etl.pipelines.ForwardFillInator import ForwardFillInator
 from forex.flows.candlestick_flow import MAJOR_PAIRS
@@ -20,14 +20,19 @@ from python_tools_and_shortcuts.databases.influxdb.InfluxDbTool import InfluxDbT
 
 
 def _make_ifc() -> InfluxDbTool:
-    return InfluxDbTool(INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG)
+    # database_config lazy-loads credentials via a module-level __getattr__ triggered
+    # on attribute access -- accessed here as database_config.X (not `from
+    # database_config import X` at module top level) so that merely importing this
+    # module (e.g. via pytest collecting an unrelated test file) never touches AWS
+    # Secrets Manager; only actually calling _make_ifc() does.
+    return InfluxDbTool(database_config.INFLUXDB_URL, database_config.INFLUXDB_TOKEN, database_config.INFLUXDB_ORG)
 
 
 @task(name='forward-fill-candlesticks', retries=3, retry_delay_seconds=30)
 def forward_fill_task(instrument: str, granularity: str) -> list[dict]:
     logger = get_run_logger()
     ifc = _make_ifc()
-    ff = ForwardFillInator(instrument, granularity, ifc, influxdb_bucket=INFLUXDB_BUCKET)
+    ff = ForwardFillInator(instrument, granularity, ifc, influxdb_bucket=database_config.INFLUXDB_BUCKET)
     ff.fit()
     logger.info(
         'Forward-filled %s %s: %d rows (%d forward-filled)',
@@ -47,7 +52,8 @@ def insert_to_influxdb(records: list[dict]) -> None:
         return
     ifc = _make_ifc()
     ifc.insert_dictionary_list(
-        records, ForwardFilledCandlestickRecord.TAGS, ForwardFilledCandlestickRecord.FIELDS, INFLUXDB_BUCKET,
+        records, ForwardFilledCandlestickRecord.TAGS, ForwardFilledCandlestickRecord.FIELDS,
+        database_config.INFLUXDB_BUCKET,
     )
     logger.info('Inserted %d forward-filled records', len(records))
 

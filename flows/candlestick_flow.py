@@ -12,13 +12,18 @@ from prefect import flow, task, get_run_logger
 
 from forex.critical_timezone import is_market_open
 from forex.etl.CandlestickETL import CandlestickETL
-from forex.etl.config.database_config import INFLUXDB_BUCKET, INFLUXDB_ORG, INFLUXDB_TOKEN, INFLUXDB_URL
+from forex.etl.config import database_config
 from forex.etl.models import CandlestickRecord
 from python_tools_and_shortcuts.databases.influxdb.InfluxDbTool import InfluxDbTool
 
 
 def _make_ifc() -> InfluxDbTool:
-    return InfluxDbTool(INFLUXDB_URL, INFLUXDB_TOKEN, INFLUXDB_ORG)
+    # database_config lazy-loads credentials via a module-level __getattr__ triggered
+    # on attribute access -- accessed here as database_config.X (not `from
+    # database_config import X` at module top level) so that merely importing this
+    # module (e.g. via pytest collecting an unrelated test file) never touches AWS
+    # Secrets Manager; only actually calling _make_ifc() does.
+    return InfluxDbTool(database_config.INFLUXDB_URL, database_config.INFLUXDB_TOKEN, database_config.INFLUXDB_ORG)
 
 
 @task(name='check-market-open')
@@ -46,7 +51,7 @@ def insert_to_influxdb(records: list[dict]) -> None:
         logger.info('No new records to insert')
         return
     ifc = _make_ifc()
-    ifc.insert_dictionary_list(records, CandlestickRecord.TAGS, CandlestickRecord.FIELDS, INFLUXDB_BUCKET)
+    ifc.insert_dictionary_list(records, CandlestickRecord.TAGS, CandlestickRecord.FIELDS, database_config.INFLUXDB_BUCKET)
     logger.info('Inserted %d records', len(records))
 
 

@@ -75,6 +75,18 @@ You also need:
 - **AWS credentials** in the environment (`AWS_PROFILE` or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`) — InfluxDB credentials are fetched at runtime from AWS Secrets Manager under the key `Forex/InfluxDbPassword`
 - A running **InfluxDB** instance
 
+`database_config` lazy-loads those credentials via a module-level `__getattr__`
+triggered on attribute access. Every module that needs them accesses it as
+`database_config.INFLUXDB_URL` (resolved fresh each call) rather than `from
+database_config import INFLUXDB_URL` — the latter freezes the resolved secret into
+the importing module's own namespace the moment it's imported (including just
+pytest collecting a test file), permanently, for the life of the process, with no
+way to substitute different credentials afterward. See
+`forex/tests/test_secrets_isolation.py` for the regression test and the real bug
+this guards against — a downstream consumer's "flaky" integration test turned out to
+be silently querying this real InfluxDB instead of its intended local Docker
+container, because of exactly this.
+
 ## Running
 
 There are two entry points: a one-off run for a single pair, and a scheduled deployment that covers all seven major pairs across three granularities.
