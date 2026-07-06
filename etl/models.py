@@ -52,3 +52,46 @@ class CandlestickRecord(BaseModel):
             else:
                 result['fields'][key] = value
         return result
+
+
+class ForwardFilledCandlestickRecord(BaseModel):
+    # Tags
+    instrument: str
+    granularity: str
+    # Fields
+    mid_open: float
+    mid_high: float
+    mid_low: float
+    mid_close: float
+    spread_close: float
+    volume: float
+    is_forward_filled: bool
+    # Time
+    timestamp: int
+
+    TAGS: ClassVar[frozenset[str]] = frozenset({'instrument', 'granularity'})
+    MEASUREMENT: ClassVar[str] = 'forward-filled candlestick'
+    FIELDS: ClassVar[dict[str, type]] = {
+        'mid_open': float,
+        'mid_high': float,
+        'mid_low': float,
+        'mid_close': float,
+        'spread_close': float,
+        'volume': float,
+        'is_forward_filled': bool,
+    }
+
+    def to_influx_dict(self) -> dict:
+        data = self.model_dump()
+        result: dict = {
+            'measurement': self.MEASUREMENT,
+            'tags': {},
+            'fields': {},
+            'time': data.pop('timestamp'),
+        }
+        for key, value in data.items():
+            if key in self.TAGS:
+                result['tags'][key] = value
+            else:
+                result['fields'][key] = value
+        return result

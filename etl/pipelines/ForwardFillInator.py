@@ -7,6 +7,7 @@ import pandas as pd
 
 from forex.critical_timezone import is_market_open_at_time
 from forex.eda.eda_config.eda_config import granularity_to_seconds_map
+from forex.etl.models import ForwardFilledCandlestickRecord
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +115,12 @@ class ForwardFillInator:
 
         df = pd.merge(df, self.df, on=['unix_epoch_s'], how='left')
 
+        # Captured here, right after the merge and before any QA/drop/ffill steps
+        # touch the frame, so it reflects genuinely-missing candles regardless of
+        # what happens to the other columns downstream (ffill only fills NaNs in the
+        # OHLCV columns; this one is never null, so ffill leaves it untouched).
+        df['is_forward_filled'] = df['volume'].isna()
+
         # QA: time columns must agree between the full grid and the pulled data
         df_to_test = df.dropna()
         assert np.min(np.int8((df_to_test['datetime_test'] == df_to_test['datetime']).values)) == 1
@@ -153,16 +160,42 @@ class ForwardFillInator:
             self.df_all_time_diff_market_open['volume'].notna().sum(),
         )
 
-    def account_for_holiday_market_closure(self) -> None:
-        # Drops rows with all-NaN OHLCV data that correspond to unmodelled holidays.
-        # TODO: replace with an explicit holiday calendar.
-        self.df_all_time_diff_market_open.dropna(inplace=True)
-
     def forward_fill_it(self) -> None:
         df = self.df_all_time_diff_market_open.sort_values(by=['unix_epoch_s'])
         df.ffill(inplace=True)
         self.df_all_time_diff_market_open_forward_filled = df.copy()
         logger.info('Forward-filled %d rows', len(self.df_all_time_diff_market_open_forward_filled))
+
+    def account_for_holiday_market_closure(self) -> None:
+        # Drops rows still NaN after forward-filling -- these are leading rows before
+        # any real candle exists yet to forward-fill from (ffill only propagates
+        # forward in time, so it cannot fill a gap with nothing before it).
+        #
+        # Previously this ran BEFORE forward_fill_it() and called plain dropna() on
+        # the pre-ffill frame, which drops every row with ANY missing OHLCV value --
+        # i.e. every gap, not just holiday closures. That made forward_fill_it()'s
+        # ffill() a no-op: there was nothing left with a NaN by the time it ran.
+        # TODO: replace with an explicit holiday calendar to also drop/flag extended
+        # multi-day closures (e.g. Christmas week) that ffill currently just bridges
+        # over with a stale price instead of excluding.
+        self.df_all_time_diff_market_open_forward_filled.dropna(inplace=True)
+
+    def make_the_influxdb_dict(self) -> None:
+        columns = [
+            'instrument', 'granularity', 'timestamp',
+            'mid_open', 'mid_high', 'mid_low', 'mid_close', 'spread_close',
+            'volume', 'is_forward_filled',
+        ]
+        df = (
+            self.df_all_time_diff_market_open_forward_filled
+            .rename(columns={'unix_epoch_s': 'timestamp'})
+            .assign(instrument=self.instrument, granularity=self.granularity)
+        )
+        self.to_influx_list = [
+            ForwardFilledCandlestickRecord(**r).to_influx_dict()
+            for r in df[columns].to_dict(orient='records')
+        ]
+        logger.info('Prepared %d forward-filled records for InfluxDB', len(self.to_influx_list))
 
     def fit(self) -> None:
         self.pull_data()
@@ -171,8 +204,9 @@ class ForwardFillInator:
         self.perform_time_calculations()
         self.weekday_hour_qa()
         self.compute_df_all_time_diff_market_open()
-        self.account_for_holiday_market_closure()
         self.forward_fill_it()
+        self.account_for_holiday_market_closure()
+        self.make_the_influxdb_dict()
 
     def plot_NaNs_vs_time(self) -> None:
         x = self.df_all_time_diff_market_open['datetime'].values
