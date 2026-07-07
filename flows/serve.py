@@ -6,9 +6,19 @@ Usage:
 
 Deployments
 -----------
-candlestick-D     daily at 00:05 UTC        (D candles, all major pairs)
-candlestick-H1    5 min past each hour UTC  (H1 candles, all major pairs)
-candlestick-M15   every 15 min UTC          (M15 candles, all major pairs)
+candlestick-D      daily at 00:05 UTC        (D candles, all major pairs)
+candlestick-H1     5 min past each hour UTC  (H1 candles, all major pairs)
+candlestick-M15    every 15 min UTC          (M15 candles, all major pairs)
+forward-fill-D     daily at 00:15 UTC        (10 min after candlestick-D)
+forward-fill-H1    15 min past each hour UTC (10 min after candlestick-H1)
+forward-fill-M15   every 15 min UTC          (10 min after candlestick-M15)
+
+Each forward-fill deployment is offset 10 minutes after its candlestick
+counterpart so it always runs against freshly-landed candles rather than
+racing the fetch that feeds it. Previously forward-fill only ran when
+triggered manually (a direct function call, or the one-off
+scripts/recompute_forward_fill_history.py) -- nothing scheduled it, so
+forward-filled data never got produced on an ongoing basis.
 
 The market-hours gate inside each flow skips runs that land outside
 trading hours (Fri 17:00 ET → Sun 17:00 ET).
@@ -20,6 +30,7 @@ import sys
 from prefect import serve
 
 from forex.flows.candlestick_flow import candlestick_batch_flow
+from forex.flows.forward_fill_flow import forward_fill_batch_flow
 
 _config_file = os.environ.get('OANDA_CONFIG_FILE', '')
 if not _config_file:
@@ -43,5 +54,26 @@ quarter_hourly = candlestick_batch_flow.to_deployment(
     parameters={'config_file': _config_file, 'granularity': 'M15'},
 )
 
+forward_fill_daily = forward_fill_batch_flow.to_deployment(
+    name='forward-fill-D',
+    cron='15 0 * * *',      # 10 min after candlestick-D
+    parameters={'granularity': 'D'},
+)
+
+forward_fill_hourly = forward_fill_batch_flow.to_deployment(
+    name='forward-fill-H1',
+    cron='15 * * * *',      # 10 min after candlestick-H1
+    parameters={'granularity': 'H1'},
+)
+
+forward_fill_quarter_hourly = forward_fill_batch_flow.to_deployment(
+    name='forward-fill-M15',
+    cron='12,27,42,57 * * * *',  # 10 min after candlestick-M15
+    parameters={'granularity': 'M15'},
+)
+
 if __name__ == '__main__':
-    serve(daily, hourly, quarter_hourly)
+    serve(
+        daily, hourly, quarter_hourly,
+        forward_fill_daily, forward_fill_hourly, forward_fill_quarter_hourly,
+    )

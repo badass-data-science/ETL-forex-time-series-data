@@ -127,21 +127,34 @@ Start a local Prefect server once (in its own terminal or as a service):
 prefect server start
 ```
 
-Then start the serve process, which registers and runs all three deployments:
+Then start the serve process, which registers and runs all six deployments:
 
 ```
 OANDA_CONFIG_FILE=/path/to/oanda_config.json python -m forex.flows.serve
 ```
 
-This registers three deployments visible at http://localhost:4200:
+This registers six deployments visible at http://localhost:4200 — one candlestick-fetch
+deployment per granularity, each paired with a forward-fill deployment offset 10 minutes
+later so it always runs against freshly-landed candles rather than racing the fetch that
+feeds it:
 
 | Deployment | Cron | Granularity | Pairs |
 |---|---|---|---|
 | `candlestick-D` | `5 0 * * *` | D | all 7 majors |
 | `candlestick-H1` | `5 * * * *` | H1 | all 7 majors |
 | `candlestick-M15` | `2,17,32,47 * * * *` | M15 | all 7 majors |
+| `forward-fill-D` | `15 0 * * *` | D | all 7 majors |
+| `forward-fill-H1` | `15 * * * *` | H1 | all 7 majors |
+| `forward-fill-M15` | `12,27,42,57 * * * *` | M15 | all 7 majors |
 
 The seven major pairs are: EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD, NZD/USD.
+
+The forward-fill deployments were missing entirely until 2026-07-06 — `serve.py` only
+ever registered the three candlestick deployments, so forward-filled data never got
+produced on an ongoing basis; it only ran when triggered manually (a direct function
+call, or the one-off `scripts/recompute_forward_fill_history.py`). If you deployed this
+service before that date, restart `python -m forex.flows.serve` to pick up the three new
+deployments.
 
 The market-hours gate (`check_market_open_task`) no-ops any run outside forex trading hours (Fri 17:00 ET → Sun 17:00 ET), so no extra cron filtering is needed.
 
