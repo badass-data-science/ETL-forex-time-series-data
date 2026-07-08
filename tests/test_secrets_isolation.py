@@ -46,6 +46,19 @@ def test_swap_rate_flow_does_not_freeze_secrets_at_import_time():
     assert hasattr(swap_rate_flow, "database_config")
 
 
+def test_economic_calendar_flow_does_not_freeze_secrets_at_import_time():
+    from forex.flows import economic_calendar_flow
+
+    for name in ("INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_BUCKET"):
+        assert not hasattr(economic_calendar_flow, name)
+    assert hasattr(economic_calendar_flow, "database_config")
+
+    # economic_calendar_flow also uses a second, separate lazily-loaded secret
+    # (Finnhub's API key) -- same pattern, same guarantee applies to it too.
+    assert not hasattr(economic_calendar_flow, "FINNHUB_API_KEY")
+    assert hasattr(economic_calendar_flow, "finnhub_config")
+
+
 def test_candlestick_etl_does_not_freeze_secrets_at_import_time():
     from forex.etl import CandlestickETL
 

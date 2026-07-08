@@ -90,6 +90,56 @@ class SwapRateRecord(BaseModel):
         return result
 
 
+class EconomicCalendarEventRecord(BaseModel):
+    """A scheduled economic calendar event (Finnhub) -- release time, country,
+    impact level, and actual/estimate/previous values if available. Not part of
+    OANDA's API; a separate provider/credential (see config/finnhub_config.py).
+    `actual`/`estimate`/`prev` are the whole point of pulling this data BEFORE it
+    happens: a future-scheduled event has no `actual` yet (and possibly no
+    `estimate` either), so these are optional and simply omitted from `fields`
+    rather than written as null -- see `to_influx_dict` below."""
+
+    # Tags
+    country: str
+    impact: str
+    # `event` (e.g. "Non-Farm Payrolls", "CPI", "FOMC Rate Decision") is a tag, not a
+    # field, despite higher cardinality than instrument/granularity/country/impact --
+    # it's a bounded, recurring set of named releases (not free text), and being able
+    # to filter/group by event name is exactly the point of ingesting this data.
+    event: str
+    # Fields
+    actual: float | None = None
+    estimate: float | None = None
+    prev: float | None = None
+    unit: str = ''
+    # Time
+    timestamp: int
+
+    TAGS: ClassVar[frozenset[str]] = frozenset({'country', 'impact', 'event'})
+    MEASUREMENT: ClassVar[str] = 'economic-calendar-event'
+    FIELDS: ClassVar[dict[str, type]] = {
+        'actual': float,
+        'estimate': float,
+        'prev': float,
+        'unit': str,
+    }
+
+    def to_influx_dict(self) -> dict:
+        data = self.model_dump()
+        result: dict = {
+            'measurement': self.MEASUREMENT,
+            'tags': {},
+            'fields': {},
+            'time': data.pop('timestamp'),
+        }
+        for key, value in data.items():
+            if key in self.TAGS:
+                result['tags'][key] = value
+            elif value is not None:
+                result['fields'][key] = value
+        return result
+
+
 class ForwardFilledCandlestickRecord(BaseModel):
     # Tags
     instrument: str
