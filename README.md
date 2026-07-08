@@ -28,12 +28,29 @@ ForwardFilledCandlestickRecord    ← Pydantic model for the forward-filled sche
       │
       ▼
 InfluxDB ('forward-filled candlestick' measurement)
+
+Oanda REST API
+      │
+      ▼
+SwapRateETL             ← fetches per-instrument long/short financing rates
+      │
+      ▼
+SwapRateRecord          ← Pydantic model; single source of truth for schema
+      │
+      ▼
+InfluxDB ('swap-rate' measurement)
 ```
 
 Downstream consumers (e.g. `forex-ML`) can use `is_forward_filled` to distinguish
 real market data from imputed placeholder bars — a forward-filled bar has zero
 return and zero volatility by construction, which is otherwise indistinguishable
 from a genuinely quiet real market.
+
+`swap-rate` is a separate, much simpler pipeline: a single current snapshot of
+long/short financing (rollover) rates per instrument, not a historical time series
+like candlesticks, so there's no ETL/pipeline/QA class hierarchy for it — just
+`SwapRateETL` directly. Downstream consumers (e.g. `forex-strategy`) use this to
+account for the cost of holding a position past the 5pm New York rollover cutoff.
 
 Both pipelines are wrapped as **Prefect flows** (`flows/`) for scheduling and observability.
 
@@ -44,7 +61,8 @@ forex/
 ├── critical_timezone.py          # market-hours gate (Toronto tz)
 ├── etl/
 │   ├── CandlestickETL.py         # API fetch + transform
-│   ├── models.py                 # CandlestickRecord (Pydantic)
+│   ├── SwapRateETL.py            # per-instrument financing (swap/rollover) rate fetch
+│   ├── models.py                 # CandlestickRecord/SwapRateRecord (Pydantic)
 │   ├── config/
 │   │   └── database_config.py    # InfluxDB credentials (via AWS Secrets Manager)
 │   └── pipelines/
@@ -53,6 +71,7 @@ forex/
 ├── flows/
 │   ├── candlestick_flow.py       # Prefect: fetch → InfluxDB (single pair + batch)
 │   ├── forward_fill_flow.py      # Prefect: forward-fill gaps
+│   ├── swap_rate_flow.py         # Prefect: fetch swap rates → InfluxDB
 │   └── serve.py                  # scheduled deployments for all major pairs
 ├── oanda/
 │   ├── headers.py                # builds Oanda auth headers
@@ -60,7 +79,9 @@ forex/
 └── tests/
     ├── test_critical_timezone.py
     ├── test_models.py
-    └── test_forward_fill_inator.py
+    ├── test_forward_fill_inator.py
+    ├── test_swap_rate_etl.py
+    └── test_secrets_isolation.py
 ```
 
 ## Prerequisites
@@ -71,7 +92,10 @@ pip install -e ".[dev]"          # installs prefect, pydantic, tenacity, etc.
 ```
 
 You also need:
-- An **Oanda config JSON** file with `server`, `account_id`, and `access_token` keys
+- An **Oanda config JSON** file with `server`, `token`, and `oanda_date_time_format`
+  keys (`CandlestickETL`/`SwapRateETL` read these). `SwapRateETL` also uses an
+  `account_id` key if present, resolving it via `/v3/accounts` otherwise (see
+  "Swap/rollover rates" below).
 - **AWS credentials** in the environment (`AWS_PROFILE` or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`) — InfluxDB credentials are fetched at runtime from AWS Secrets Manager under the key `Forex/InfluxDbPassword`
 - A running **InfluxDB** instance
 
@@ -119,6 +143,14 @@ from forex.flows.forward_fill_flow import forward_fill_flow
 forward_fill_flow(instrument='EUR/USD', granularity='H1')
 ```
 
+Swap/rollover rates for all major pairs (a single current snapshot, not a
+historical backfill):
+
+```python
+from forex.flows.swap_rate_flow import swap_rate_flow
+swap_rate_flow(config_file='/path/to/oanda_config.json')
+```
+
 ### Option 2 — Scheduled deployment (all major pairs, three granularities)
 
 Start a local Prefect server once (in its own terminal or as a service):
@@ -127,13 +159,13 @@ Start a local Prefect server once (in its own terminal or as a service):
 prefect server start
 ```
 
-Then start the serve process, which registers and runs all six deployments:
+Then start the serve process, which registers and runs all seven deployments:
 
 ```
 OANDA_CONFIG_FILE=/path/to/oanda_config.json python -m forex.flows.serve
 ```
 
-This registers six deployments visible at http://localhost:4200 — one candlestick-fetch
+This registers seven deployments visible at http://localhost:4200 — one candlestick-fetch
 deployment per granularity, each paired with a forward-fill deployment offset 10 minutes
 later so it always runs against freshly-landed candles rather than racing the fetch that
 feeds it:
@@ -146,8 +178,14 @@ feeds it:
 | `forward-fill-D` | `15 0 * * *` | D | all 7 majors |
 | `forward-fill-H1` | `15 * * * *` | H1 | all 7 majors |
 | `forward-fill-M15` | `12,27,42,57 * * * *` | M15 | all 7 majors |
+| `swap-rate-D` | `45 20 * * *` | n/a | all 7 majors |
 
 The seven major pairs are: EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD, NZD/USD.
+
+`swap-rate-D` runs at 20:45 UTC — about 15 minutes before the 5pm New York rollover
+cutoff (a fixed UTC time, not DST-aware, the same simplification forex-ML's own
+trading-session features already make) — so a fresh rate is on hand right as any
+position held past the cutoff would actually be charged one.
 
 The forward-fill deployments were missing entirely until 2026-07-06 — `serve.py` only
 ever registered the three candlestick deployments, so forward-filled data never got
@@ -218,11 +256,27 @@ candle at that point, `False` otherwise. It survives the subsequent forward-fill
 step untouched (`ffill()` only fills genuine `NaN`s in the OHLCV columns; this field
 is never null to begin with).
 
+`SwapRateRecord` (`etl/models.py`) is the schema for per-instrument financing rates:
+
+| Attribute | Purpose |
+|---|---|
+| `MEASUREMENT` | InfluxDB measurement name (`'swap-rate'`) |
+| `TAGS` | InfluxDB tag set (`instrument` only — no `granularity`, see below) |
+| `FIELDS` | `long_rate`, `short_rate` |
+| `.to_influx_dict()` | Serialises a record to the InfluxDB write payload |
+
+Unlike the candlestick records, there's no `granularity` tag — a financing rate is
+an account-level daily snapshot per instrument, not tied to any candle timeframe.
+`long_rate`/`short_rate` are OANDA's daily financing rates (as a fraction, e.g.
+`-0.0067` for the long side), charged (or credited, if positive) once per day a
+position is held past the 5pm New York rollover cutoff.
+
 ## Tests
 
 ```
 cd Data-Science/Data-Engineering/ETL
 pytest        # test_critical_timezone.py + test_models.py + test_forward_fill_inator.py
+              # + test_swap_rate_etl.py + test_secrets_isolation.py
 pytest -v     # verbose output (configured in pyproject.toml)
 ```
 

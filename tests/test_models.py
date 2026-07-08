@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from forex.etl.models import CandlestickRecord
+from forex.etl.models import CandlestickRecord, SwapRateRecord
 
 _BASE = dict(
     instrument='EUR/USD',
@@ -79,3 +79,49 @@ class TestToInfluxDict:
         d = self._dict()
         assert 'volume' in d['fields']
         assert 'complete' in d['fields']
+
+
+_SWAP_BASE = dict(
+    instrument='EUR/USD',
+    long_rate=-0.0067,
+    short_rate=-0.0038,
+    timestamp=1_700_000_000,
+)
+
+
+class TestSwapRateRecord:
+    def test_valid_record_instantiates(self):
+        rec = SwapRateRecord(**_SWAP_BASE)
+        assert rec.instrument == 'EUR/USD'
+        assert rec.long_rate == -0.0067
+
+    def test_missing_field_raises(self):
+        bad = {k: v for k, v in _SWAP_BASE.items() if k != 'short_rate'}
+        with pytest.raises(ValidationError):
+            SwapRateRecord(**bad)
+
+    def test_float_coercion(self):
+        rec = SwapRateRecord(**{**_SWAP_BASE, 'long_rate': '-0.0067'})
+        assert abs(rec.long_rate - (-0.0067)) < 1e-9
+
+
+class TestSwapRateToInfluxDict:
+    def _dict(self, **overrides):
+        return SwapRateRecord(**{**_SWAP_BASE, **overrides}).to_influx_dict()
+
+    def test_measurement_name(self):
+        assert self._dict()['measurement'] == 'swap-rate'
+
+    def test_tag_keys_do_not_include_granularity(self):
+        # unlike CandlestickRecord, swap rates are an account-level snapshot, not
+        # tied to any candle granularity
+        assert set(self._dict()['tags']) == {'instrument'}
+
+    def test_time_field(self):
+        assert self._dict()['time'] == 1_700_000_000
+
+    def test_rates_in_fields_not_tags(self):
+        d = self._dict()
+        assert 'long_rate' in d['fields']
+        assert 'short_rate' in d['fields']
+        assert 'long_rate' not in d['tags']

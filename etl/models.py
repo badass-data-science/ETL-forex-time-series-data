@@ -54,6 +54,42 @@ class CandlestickRecord(BaseModel):
         return result
 
 
+class SwapRateRecord(BaseModel):
+    """Per-instrument long/short financing (swap/rollover) rate -- an account-level
+    daily snapshot, not tied to a candle granularity, so unlike CandlestickRecord
+    there's no `granularity` tag here."""
+
+    # Tags
+    instrument: str
+    # Fields
+    long_rate: float
+    short_rate: float
+    # Time
+    timestamp: int
+
+    TAGS: ClassVar[frozenset[str]] = frozenset({'instrument'})
+    MEASUREMENT: ClassVar[str] = 'swap-rate'
+    FIELDS: ClassVar[dict[str, type]] = {
+        'long_rate': float,
+        'short_rate': float,
+    }
+
+    def to_influx_dict(self) -> dict:
+        data = self.model_dump()
+        result: dict = {
+            'measurement': self.MEASUREMENT,
+            'tags': {},
+            'fields': {},
+            'time': data.pop('timestamp'),
+        }
+        for key, value in data.items():
+            if key in self.TAGS:
+                result['tags'][key] = value
+            else:
+                result['fields'][key] = value
+        return result
+
+
 class ForwardFilledCandlestickRecord(BaseModel):
     # Tags
     instrument: str

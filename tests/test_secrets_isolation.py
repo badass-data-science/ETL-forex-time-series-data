@@ -38,6 +38,14 @@ def test_forward_fill_flow_does_not_freeze_secrets_at_import_time():
     assert hasattr(forward_fill_flow, "database_config")
 
 
+def test_swap_rate_flow_does_not_freeze_secrets_at_import_time():
+    from forex.flows import swap_rate_flow
+
+    for name in ("INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_BUCKET"):
+        assert not hasattr(swap_rate_flow, name)
+    assert hasattr(swap_rate_flow, "database_config")
+
+
 def test_candlestick_etl_does_not_freeze_secrets_at_import_time():
     from forex.etl import CandlestickETL
 

@@ -12,6 +12,7 @@ candlestick-M15    every 15 min UTC          (M15 candles, all major pairs)
 forward-fill-D     daily at 00:15 UTC        (10 min after candlestick-D)
 forward-fill-H1    15 min past each hour UTC (10 min after candlestick-H1)
 forward-fill-M15   every 15 min UTC          (10 min after candlestick-M15)
+swap-rate-D        daily at 20:45 UTC        (all major pairs)
 
 Each forward-fill deployment is offset 10 minutes after its candlestick
 counterpart so it always runs against freshly-landed candles rather than
@@ -20,8 +21,14 @@ triggered manually (a direct function call, or the one-off
 scripts/recompute_forward_fill_history.py) -- nothing scheduled it, so
 forward-filled data never got produced on an ongoing basis.
 
-The market-hours gate inside each flow skips runs that land outside
-trading hours (Fri 17:00 ET → Sun 17:00 ET).
+swap-rate-D runs ~15 minutes before the 5pm New York rollover cutoff (a
+fixed UTC time, not DST-aware -- the same simplification the downstream
+forex-ML session-window features already make) so a fresh rate is on hand
+right as any position held past the cutoff would actually be charged one.
+
+The market-hours gate inside candlestick_flow/forward_fill_flow skips runs
+that land outside trading hours (Fri 17:00 ET → Sun 17:00 ET); swap_rate_flow
+has no such gate since OANDA continues to serve financing rates around the clock.
 """
 
 import os
@@ -31,6 +38,7 @@ from prefect import serve
 
 from forex.flows.candlestick_flow import candlestick_batch_flow
 from forex.flows.forward_fill_flow import forward_fill_batch_flow
+from forex.flows.swap_rate_flow import swap_rate_flow
 
 _config_file = os.environ.get('OANDA_CONFIG_FILE', '')
 if not _config_file:
@@ -72,8 +80,15 @@ forward_fill_quarter_hourly = forward_fill_batch_flow.to_deployment(
     parameters={'granularity': 'M15'},
 )
 
+swap_rates_daily = swap_rate_flow.to_deployment(
+    name='swap-rate-D',
+    cron='45 20 * * *',    # ~15 min before the 5pm NY rollover cutoff (fixed UTC, not DST-aware)
+    parameters={'config_file': _config_file},
+)
+
 if __name__ == '__main__':
     serve(
         daily, hourly, quarter_hourly,
         forward_fill_daily, forward_fill_hourly, forward_fill_quarter_hourly,
+        swap_rates_daily,
     )
