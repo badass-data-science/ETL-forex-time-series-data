@@ -140,6 +140,55 @@ class EconomicCalendarEventRecord(BaseModel):
         return result
 
 
+class PositioningBucketRecord(BaseModel):
+    """One price bucket from an OANDA order-book or position-book snapshot --
+    aggregated retail positioning data. Reachable via the same v20 API/token
+    already used for candlesticks (just a different path suffix), unlike swap
+    rates (needed an account ID) or the economic calendar (a separate provider).
+
+    Stored per-bucket rather than collapsed into a single "overall % long/short"
+    summary stat: OANDA's per-bucket longCountPercent/shortCountPercent
+    normalization isn't something to silently reinterpret here, and a downstream
+    consumer can compute whatever aggregate it actually needs (near-price
+    concentration, distance-weighted, etc.) directly from the raw buckets. Real
+    responses can carry on the order of a hundred+ buckets per instrument per book
+    type per snapshot -- a genuine storage/cardinality cost worth being aware of,
+    unlike every other measurement in this pipeline."""
+
+    # Tags
+    instrument: str
+    book_type: str  # "order" or "position"
+    # Fields
+    bucket_price: float
+    long_count_percent: float
+    short_count_percent: float
+    # Time
+    timestamp: int
+
+    TAGS: ClassVar[frozenset[str]] = frozenset({'instrument', 'book_type'})
+    MEASUREMENT: ClassVar[str] = 'positioning-bucket'
+    FIELDS: ClassVar[dict[str, type]] = {
+        'bucket_price': float,
+        'long_count_percent': float,
+        'short_count_percent': float,
+    }
+
+    def to_influx_dict(self) -> dict:
+        data = self.model_dump()
+        result: dict = {
+            'measurement': self.MEASUREMENT,
+            'tags': {},
+            'fields': {},
+            'time': data.pop('timestamp'),
+        }
+        for key, value in data.items():
+            if key in self.TAGS:
+                result['tags'][key] = value
+            else:
+                result['fields'][key] = value
+        return result
+
+
 class ForwardFilledCandlestickRecord(BaseModel):
     # Tags
     instrument: str

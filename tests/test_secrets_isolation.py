@@ -59,6 +59,14 @@ def test_economic_calendar_flow_does_not_freeze_secrets_at_import_time():
     assert hasattr(economic_calendar_flow, "finnhub_config")
 
 
+def test_positioning_flow_does_not_freeze_secrets_at_import_time():
+    from forex.flows import positioning_flow
+
+    for name in ("INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_BUCKET"):
+        assert not hasattr(positioning_flow, name)
+    assert hasattr(positioning_flow, "database_config")
+
+
 def test_candlestick_etl_does_not_freeze_secrets_at_import_time():
     from forex.etl import CandlestickETL
 

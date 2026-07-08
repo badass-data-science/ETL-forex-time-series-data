@@ -50,6 +50,17 @@ EconomicCalendarEventRecord   ← Pydantic model; single source of truth for sch
       │
       ▼
 InfluxDB ('economic-calendar-event' measurement)
+
+Oanda REST API
+      │
+      ▼
+PositioningETL          ← fetches order-book + position-book snapshots
+      │
+      ▼
+PositioningBucketRecord ← Pydantic model; single source of truth for schema
+      │
+      ▼
+InfluxDB ('positioning-bucket' measurement)
 ```
 
 Downstream consumers (e.g. `forex-ML`) can use `is_forward_filled` to distinguish
@@ -72,6 +83,16 @@ range rather than an incremental backfill — re-pulling the same rolling window
 is cheap and naturally idempotent, and picks up newly-published `actual` values for
 events that already occurred.
 
+`positioning-bucket` is back to Oanda's own API/token (the `/v3/instruments/
+{instrument}/orderBook` and `/positionBook` endpoints, reachable with no new auth
+work) — aggregated retail order-book/position-book data, one row per price bucket
+per snapshot rather than a single collapsed "overall % long/short" stat: Oanda's
+per-bucket percentage normalization isn't something to silently reinterpret here,
+so a downstream consumer computes whatever aggregate it actually needs directly
+from the raw buckets. A real snapshot can carry a hundred-plus buckets per
+instrument per book type, a real storage/cardinality cost worth being aware of
+unlike every other measurement in this pipeline.
+
 Every pipeline is wrapped as a **Prefect flow** (`flows/`) for scheduling and observability.
 
 ## Project layout
@@ -83,8 +104,10 @@ forex/
 │   ├── CandlestickETL.py         # API fetch + transform
 │   ├── SwapRateETL.py            # per-instrument financing (swap/rollover) rate fetch
 │   ├── EconomicCalendarETL.py    # scheduled economic release event fetch (Finnhub)
+│   ├── PositioningETL.py         # order-book/position-book snapshot fetch
 │   ├── models.py                 # CandlestickRecord/SwapRateRecord/
-│   │                              # EconomicCalendarEventRecord (Pydantic)
+│   │                              # EconomicCalendarEventRecord/
+│   │                              # PositioningBucketRecord (Pydantic)
 │   ├── config/
 │   │   ├── database_config.py    # InfluxDB credentials (via AWS Secrets Manager)
 │   │   └── finnhub_config.py     # Finnhub API key (via AWS Secrets Manager)
@@ -96,6 +119,7 @@ forex/
 │   ├── forward_fill_flow.py      # Prefect: forward-fill gaps
 │   ├── swap_rate_flow.py         # Prefect: fetch swap rates → InfluxDB
 │   ├── economic_calendar_flow.py # Prefect: fetch calendar events → InfluxDB
+│   ├── positioning_flow.py       # Prefect: fetch order/position book → InfluxDB
 │   └── serve.py                  # scheduled deployments for all major pairs
 ├── oanda/
 │   ├── headers.py                # builds Oanda auth headers
@@ -106,6 +130,7 @@ forex/
     ├── test_forward_fill_inator.py
     ├── test_swap_rate_etl.py
     ├── test_economic_calendar_etl.py
+    ├── test_positioning_etl.py
     └── test_secrets_isolation.py
 ```
 
@@ -185,6 +210,14 @@ from forex.flows.economic_calendar_flow import economic_calendar_flow
 economic_calendar_flow(days_ahead=14)
 ```
 
+Order-book/position-book snapshots for all major pairs (back to Oanda's own
+API/token, same as candlesticks):
+
+```python
+from forex.flows.positioning_flow import positioning_flow
+positioning_flow(config_file='/path/to/oanda_config.json')
+```
+
 ### Option 2 — Scheduled deployment (all major pairs, three granularities)
 
 Start a local Prefect server once (in its own terminal or as a service):
@@ -199,7 +232,7 @@ Then start the serve process, which registers and runs all seven deployments:
 OANDA_CONFIG_FILE=/path/to/oanda_config.json python -m forex.flows.serve
 ```
 
-This registers eight deployments visible at http://localhost:4200 — one candlestick-fetch
+This registers nine deployments visible at http://localhost:4200 — one candlestick-fetch
 deployment per granularity, each paired with a forward-fill deployment offset 10 minutes
 later so it always runs against freshly-landed candles rather than racing the fetch that
 feeds it:
@@ -214,6 +247,7 @@ feeds it:
 | `forward-fill-M15` | `12,27,42,57 * * * *` | M15 | all 7 majors |
 | `swap-rate-D` | `45 20 * * *` | n/a | all 7 majors |
 | `economic-calendar-D` | `30 0 * * *` | n/a | n/a (global calendar) |
+| `positioning` | `*/20 * * * *` | n/a | all 7 majors |
 
 The seven major pairs are: EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD, NZD/USD.
 
@@ -225,6 +259,10 @@ position held past the cutoff would actually be charged one.
 `economic-calendar-D` runs at 00:30 UTC, after the daily candlestick/forward-fill
 slots, pulling a rolling 14-day-ahead window from Finnhub each time (not a single
 fixed date — see "Architecture" above for why that's cheap and idempotent).
+
+`positioning` runs every 20 minutes, matching how often Oanda has historically
+refreshed its order-book/position-book snapshots — polling faster wouldn't surface
+anything new.
 
 The forward-fill deployments were missing entirely until 2026-07-06 — `serve.py` only
 ever registered the three candlestick deployments, so forward-filled data never got
@@ -328,13 +366,31 @@ event has no `actual` yet (and possibly no `estimate` either), so `to_influx_dic
 omits any `None` field entirely rather than writing it as null — the one place this
 schema's serialization differs from the other three records above.
 
+`PositioningBucketRecord` (`etl/models.py`) is the schema for one price bucket of
+an order-book or position-book snapshot:
+
+| Attribute | Purpose |
+|---|---|
+| `MEASUREMENT` | InfluxDB measurement name (`'positioning-bucket'`) |
+| `TAGS` | `instrument`, `book_type` (`'order'` or `'position'`) |
+| `FIELDS` | `bucket_price`, `long_count_percent`, `short_count_percent` |
+| `.to_influx_dict()` | Serialises a record to the InfluxDB write payload |
+
+One row per price bucket, not a single collapsed "overall % long/short" stat —
+Oanda's per-bucket percentage normalization isn't something to silently reinterpret
+here, so a downstream consumer computes whatever aggregate it actually needs
+(near-price concentration, distance-weighted, etc.) directly from the raw buckets.
+A real snapshot can carry a hundred-plus buckets per instrument per book type — a
+genuine storage/cardinality cost worth being aware of, unlike every other
+measurement in this pipeline.
+
 ## Tests
 
 ```
 cd Data-Science/Data-Engineering/ETL
 pytest        # test_critical_timezone.py + test_models.py + test_forward_fill_inator.py
               # + test_swap_rate_etl.py + test_economic_calendar_etl.py
-              # + test_secrets_isolation.py
+              # + test_positioning_etl.py + test_secrets_isolation.py
 pytest -v     # verbose output (configured in pyproject.toml)
 ```
 

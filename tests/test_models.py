@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from forex.etl.models import CandlestickRecord, EconomicCalendarEventRecord, SwapRateRecord
+from forex.etl.models import CandlestickRecord, EconomicCalendarEventRecord, PositioningBucketRecord, SwapRateRecord
 
 _BASE = dict(
     instrument='EUR/USD',
@@ -181,3 +181,50 @@ class TestEconomicCalendarToInfluxDict:
         assert d['fields']['estimate'] == 200000.0
         assert d['fields']['prev'] == 199000.0
         assert d['fields']['unit'] == 'K'
+
+
+_POSITIONING_BASE = dict(
+    instrument='EUR/USD',
+    book_type='order',
+    bucket_price=1.0990,
+    long_count_percent=0.1234,
+    short_count_percent=0.0456,
+    timestamp=1_700_000_000,
+)
+
+
+class TestPositioningBucketRecord:
+    def test_valid_record_instantiates(self):
+        rec = PositioningBucketRecord(**_POSITIONING_BASE)
+        assert rec.instrument == 'EUR/USD'
+        assert rec.book_type == 'order'
+
+    def test_missing_field_raises(self):
+        bad = {k: v for k, v in _POSITIONING_BASE.items() if k != 'bucket_price'}
+        with pytest.raises(ValidationError):
+            PositioningBucketRecord(**bad)
+
+    def test_float_coercion(self):
+        rec = PositioningBucketRecord(**{**_POSITIONING_BASE, 'bucket_price': '1.0990'})
+        assert abs(rec.bucket_price - 1.0990) < 1e-9
+
+
+class TestPositioningToInfluxDict:
+    def _dict(self, **overrides):
+        return PositioningBucketRecord(**{**_POSITIONING_BASE, **overrides}).to_influx_dict()
+
+    def test_measurement_name(self):
+        assert self._dict()['measurement'] == 'positioning-bucket'
+
+    def test_tag_keys(self):
+        assert set(self._dict()['tags']) == {'instrument', 'book_type'}
+
+    def test_time_field(self):
+        assert self._dict()['time'] == 1_700_000_000
+
+    def test_bucket_values_in_fields_not_tags(self):
+        d = self._dict()
+        assert 'bucket_price' in d['fields']
+        assert 'long_count_percent' in d['fields']
+        assert 'short_count_percent' in d['fields']
+        assert 'bucket_price' not in d['tags']

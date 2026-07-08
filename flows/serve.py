@@ -14,6 +14,7 @@ forward-fill-H1    15 min past each hour UTC (10 min after candlestick-H1)
 forward-fill-M15   every 15 min UTC          (10 min after candlestick-M15)
 swap-rate-D        daily at 20:45 UTC        (all major pairs)
 economic-calendar-D daily at 00:30 UTC       (rolling 14-day-ahead window, Finnhub)
+positioning        every 20 min UTC          (order-book + position-book, all major pairs)
 
 Each forward-fill deployment is offset 10 minutes after its candlestick
 counterpart so it always runs against freshly-landed candles rather than
@@ -34,10 +35,16 @@ in-advance event times on hand before they happen, and re-pulling the same
 window daily is cheap and naturally idempotent (it also picks up newly-
 published `actual` values for events that already occurred).
 
+positioning pulls OANDA's order-book/position-book snapshots (back to
+OANDA's own API/token, same as candlesticks) every 20 minutes -- matching
+how often OANDA itself has historically refreshed these snapshots, so
+polling faster wouldn't surface anything new.
+
 The market-hours gate inside candlestick_flow/forward_fill_flow skips runs
-that land outside trading hours (Fri 17:00 ET → Sun 17:00 ET); swap_rate_flow
-and economic_calendar_flow have no such gate -- neither is tied to candle
-formation, and both providers serve data outside forex trading hours.
+that land outside trading hours (Fri 17:00 ET → Sun 17:00 ET); swap_rate_flow,
+economic_calendar_flow, and positioning_flow have no such gate -- none of them
+are tied to candle formation, and all three data sources remain available
+outside forex trading hours (OANDA just won't have refreshed recently).
 """
 
 import os
@@ -48,6 +55,7 @@ from prefect import serve
 from forex.flows.candlestick_flow import candlestick_batch_flow
 from forex.flows.economic_calendar_flow import economic_calendar_flow
 from forex.flows.forward_fill_flow import forward_fill_batch_flow
+from forex.flows.positioning_flow import positioning_flow
 from forex.flows.swap_rate_flow import swap_rate_flow
 
 _config_file = os.environ.get('OANDA_CONFIG_FILE', '')
@@ -102,9 +110,15 @@ economic_calendar_daily = economic_calendar_flow.to_deployment(
     parameters={'days_ahead': 14},
 )
 
+positioning = positioning_flow.to_deployment(
+    name='positioning',
+    cron='*/20 * * * *',   # matches OANDA's own historical order/position-book refresh cadence
+    parameters={'config_file': _config_file},
+)
+
 if __name__ == '__main__':
     serve(
         daily, hourly, quarter_hourly,
         forward_fill_daily, forward_fill_hourly, forward_fill_quarter_hourly,
-        swap_rates_daily, economic_calendar_daily,
+        swap_rates_daily, economic_calendar_daily, positioning,
     )
