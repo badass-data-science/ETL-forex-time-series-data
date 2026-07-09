@@ -71,8 +71,11 @@ from a genuinely quiet real market.
 `swap-rate` is a separate, much simpler pipeline: a single current snapshot of
 long/short financing (rollover) rates per instrument, not a historical time series
 like candlesticks, so there's no ETL/pipeline/QA class hierarchy for it — just
-`SwapRateETL` directly. Downstream consumers (e.g. `forex-strategy`) use this to
-account for the cost of holding a position past the 5pm New York rollover cutoff.
+`SwapRateETL` directly. Downstream, `forex-ML`'s `forex_ml/data/swap_rates.py`
+reads this measurement directly (converting OANDA's annual-rate-as-decimal
+convention to a per-night percentage) to account for the real cost of holding a
+position past the 5pm New York rollover cutoff — both in triple-barrier labeling
+and, via that same module, in `forex-strategy`'s backtest.
 
 `economic-calendar-event` is the one pipeline here NOT sourced from Oanda — economic
 calendar data (scheduled release times, country, impact level, actual/estimate/
