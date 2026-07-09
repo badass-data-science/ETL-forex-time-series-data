@@ -32,7 +32,7 @@ def fetch_swap_rates(config_file: str, instruments: list[str]) -> list[dict]:
     return etl.to_influx_list
 
 
-@task(name='insert-swap-rates-to-influxdb')
+@task(name='insert-swap-rates-to-influxdb', retries=3, retry_delay_seconds=30)
 def insert_swap_rates_to_influxdb(records: list[dict]) -> None:
     logger = get_run_logger()
     if not records:

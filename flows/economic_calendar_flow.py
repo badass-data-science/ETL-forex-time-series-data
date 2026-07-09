@@ -33,7 +33,7 @@ def fetch_economic_calendar(from_date: str, to_date: str) -> list[dict]:
     return etl.to_influx_list
 
 
-@task(name='insert-economic-calendar-to-influxdb')
+@task(name='insert-economic-calendar-to-influxdb', retries=3, retry_delay_seconds=30)
 def insert_economic_calendar_to_influxdb(records: list[dict]) -> None:
     logger = get_run_logger()
     if not records:

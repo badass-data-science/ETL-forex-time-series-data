@@ -33,7 +33,7 @@ def fetch_positioning(config_file: str, instruments: list[str]) -> list[dict]:
     return etl.to_influx_list
 
 
-@task(name='insert-positioning-to-influxdb')
+@task(name='insert-positioning-to-influxdb', retries=3, retry_delay_seconds=30)
 def insert_positioning_to_influxdb(records: list[dict]) -> None:
     logger = get_run_logger()
     if not records:

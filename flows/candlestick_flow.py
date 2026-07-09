@@ -44,7 +44,7 @@ def fetch_candlestick_data(config_file: str, instrument: str, granularity: str) 
     return etl.to_influx_list
 
 
-@task(name='insert-to-influxdb')
+@task(name='insert-to-influxdb', retries=3, retry_delay_seconds=30)
 def insert_to_influxdb(records: list[dict]) -> None:
     logger = get_run_logger()
     if not records:

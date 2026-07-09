@@ -44,7 +44,7 @@ def forward_fill_task(instrument: str, granularity: str) -> list[dict]:
     return ff.to_influx_list
 
 
-@task(name='insert-forward-filled-to-influxdb')
+@task(name='insert-forward-filled-to-influxdb', retries=3, retry_delay_seconds=30)
 def insert_to_influxdb(records: list[dict]) -> None:
     logger = get_run_logger()
     if not records:
