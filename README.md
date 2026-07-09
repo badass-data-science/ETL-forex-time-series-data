@@ -86,6 +86,13 @@ range rather than an incremental backfill — re-pulling the same rolling window
 is cheap and naturally idempotent, and picks up newly-published `actual` values for
 events that already occurred.
 
+**Status: not currently ingested.** `/calendar/economic` returns `403` on
+Finnhub's free tier (confirmed with a valid, working API key — the free plan
+simply doesn't include this endpoint); the paid tier that does is priced well
+outside this project's budget. The code is complete and unit-tested, ready to run
+the moment either a cheaper provider is found or the budget changes — abandoned
+for now on cost, not because anything here is broken.
+
 `positioning-bucket` is back to Oanda's own API/token (the `/v3/instruments/
 {instrument}/orderBook` and `/positionBook` endpoints, reachable with no new auth
 work) — aggregated retail order-book/position-book data, one row per price bucket
@@ -95,6 +102,15 @@ so a downstream consumer computes whatever aggregate it actually needs directly
 from the raw buckets. A real snapshot can carry a hundred-plus buckets per
 instrument per book type, a real storage/cardinality cost worth being aware of
 unlike every other measurement in this pipeline.
+
+**Status: not currently ingested.** Confirmed directly against both a practice
+and a live production account/token (the live token independently verified valid
+against other endpoints) that these endpoints reject every request. OANDA
+discontinued orderBook/positionBook entirely as a business decision; the data is
+now only offered through a separate enterprise product priced at $1,850/month
+with a $22,000/year minimum. Abandoned for now on cost, same as the economic
+calendar above — the code is otherwise complete, but there's no plan-upgrade path
+here, only a fundamentally different (and expensive) product.
 
 Every pipeline is wrapped as a **Prefect flow** (`flows/`) for scheduling and observability.
 
@@ -150,7 +166,11 @@ You also need:
   `account_id` key if present, resolving it via `/v3/accounts` otherwise (see
   "Swap/rollover rates" below).
 - **AWS credentials** in the environment (`AWS_PROFILE` or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`) — InfluxDB credentials AND the Finnhub API key are both fetched at runtime from AWS Secrets Manager, under `Forex/InfluxDbPassword` and `Forex/FinnhubApiKey` respectively (two separate secrets — Finnhub isn't part of Oanda's credential set at all)
-- A **Finnhub API key** (a free tier is enough for the economic calendar endpoint), stored in the `Forex/FinnhubApiKey` secret as `{"FINNHUB_API_KEY": "..."}`
+- A **Finnhub API key**, stored in the `Forex/FinnhubApiKey` secret as
+  `{"FINNHUB_API_KEY": "..."}` — only needed if running `economic_calendar_flow`
+  manually; note the free tier does **not** include the `/calendar/economic`
+  endpoint (confirmed — returns `403`), so a working key alone isn't enough. See
+  "Architecture" above.
 - A running **InfluxDB** instance
 
 `database_config`/`finnhub_config` both lazy-load their credentials via a
@@ -206,7 +226,8 @@ swap_rate_flow(config_file='/path/to/oanda_config.json')
 ```
 
 Economic calendar events for a rolling 14-day-ahead window (no `config_file` needed
-— this pulls from Finnhub, not Oanda):
+— this pulls from Finnhub, not Oanda). **Currently blocked** — see "Architecture"
+above; this will raise `403` on a free-tier Finnhub key:
 
 ```python
 from forex.flows.economic_calendar_flow import economic_calendar_flow
@@ -214,7 +235,9 @@ economic_calendar_flow(days_ahead=14)
 ```
 
 Order-book/position-book snapshots for all major pairs (back to Oanda's own
-API/token, same as candlesticks):
+API/token, same as candlesticks). **Currently blocked** — see "Architecture"
+above; OANDA discontinued this endpoint entirely, so this will raise `400`/`401`
+regardless of account:
 
 ```python
 from forex.flows.positioning_flow import positioning_flow
@@ -249,8 +272,6 @@ feeds it:
 | `forward-fill-H1` | `15 * * * *` | H1 | all 7 majors |
 | `forward-fill-M15` | `12,27,42,57 * * * *` | M15 | all 7 majors |
 | `swap-rate-D` | `45 20 * * *` | n/a | all 7 majors |
-| `economic-calendar-D` | `30 0 * * *` | n/a | n/a (global calendar) |
-| `positioning` | `*/20 * * * *` | n/a | all 7 majors |
 
 The seven major pairs are: EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD, NZD/USD.
 
@@ -259,13 +280,11 @@ cutoff (a fixed UTC time, not DST-aware, the same simplification forex-ML's own
 trading-session features already make) — so a fresh rate is on hand right as any
 position held past the cutoff would actually be charged one.
 
-`economic-calendar-D` runs at 00:30 UTC, after the daily candlestick/forward-fill
-slots, pulling a rolling 14-day-ahead window from Finnhub each time (not a single
-fixed date — see "Architecture" above for why that's cheap and idempotent).
-
-`positioning` runs every 20 minutes, matching how often Oanda has historically
-refreshed its order-book/position-book snapshots — polling faster wouldn't surface
-anything new.
+`economic_calendar_flow` and `positioning_flow` are intentionally NOT in this table
+— both are blocked on external cost/access issues, not bugs (see "Architecture"
+above), so scheduling either would just accumulate failed runs. `serve.py` no
+longer registers deployments for them; if you deployed this service before
+2026-07-10, restart `python -m forex.flows.serve` to drop them.
 
 The forward-fill deployments were missing entirely until 2026-07-06 — `serve.py` only
 ever registered the three candlestick deployments, so forward-filled data never got
