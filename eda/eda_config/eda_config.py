@@ -17,11 +17,12 @@ instrument_list = [
     'USD/JPY',
 ]
 
-granularity_list = ['H1', 'M15']
+granularity_list = ['H1', 'H4', 'M15']
 
 granularity_to_seconds_map = {
     'M15' : 60 * 15,
     'H1' : seconds_in_one_hour,
+    'H4' : 4 * seconds_in_one_hour,
     'D' : seconds_in_one_day,
     'W' : seconds_in_one_week,
 }
