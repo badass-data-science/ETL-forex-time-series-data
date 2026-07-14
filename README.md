@@ -68,6 +68,31 @@ real market data from imputed placeholder bars — a forward-filled bar has zero
 return and zero volatility by construction, which is otherwise indistinguishable
 from a genuinely quiet real market.
 
+**DST-aware expected-bar grid (fixed 2026-07-14):** `ForwardFillInator` decides
+which timestamps a candle is expected to exist at by building a grid, then
+merging real data onto it — anything unmatched gets forward-filled. That grid
+used to be a fixed number of UTC seconds between bars, forever
+(`np.arange(mn, mx + step, step)`). H1/M15 candles are anchored to fixed
+UTC-hour/quarter-hour marks, so this was fine for them. H4/D candles are
+anchored to a local time-of-day instead (the same 5pm America/New_York-style
+rollover convention used elsewhere in this pipeline), which shifts by exactly
+one hour, in UTC terms, at every DST transition — so the old grid silently fell
+out of alignment with real data twice a year, and every bar after that point
+got forward-filled from the last real match instead of matched to its own real
+value. Confirmed directly against real EUR/USD history before fixing anything:
+H1/M15 had zero misaligned rows across their full history; H4/D had ~66%
+misaligned, with the very first bad H4 row landing on 2010-03-14 — the exact
+date the US switched to Daylight Time that year. The grid is now built in
+local wall-clock time and localized per-instant, so it tracks the real DST
+shift instead of assuming one fixed UTC offset holds forever (verified: zero
+misaligned rows across all 17 years of real H4 history, spanning every spring
+and fall transition in that range). Already-ingested forward-filled H4/D
+history in InfluxDB needs a re-run of `forward_fill_flow` (or the batch
+equivalent) to pick up the correction — `ForwardFillInator.pull_data()` always
+re-pulls the full history from `cutoff_timestamp` and re-writes every row,
+so one full run recomputes everything; there's no separate backfill script
+needed.
+
 `swap-rate` is a separate, much simpler pipeline: a single current snapshot of
 long/short financing (rollover) rates per instrument, not a historical time series
 like candlesticks, so there's no ETL/pipeline/QA class hierarchy for it — just

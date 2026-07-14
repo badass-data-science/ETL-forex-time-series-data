@@ -89,11 +89,59 @@ class ForwardFillInator:
     def weekday_hour_qa(self) -> None:
         self.df_weekday_hour_agg = self.df.groupby(['weekday', 'hour'])['unix_epoch_s'].agg('count').reset_index()
 
+    def _build_expected_timestamp_grid(self, mn: int, mx: int) -> np.ndarray:
+        """Every timestamp a candle is expected to exist at, from `mn` to `mx`.
+
+        Built in LOCAL wall-clock time, not a fixed number of UTC seconds:
+        OANDA's own H4/D candle boundaries are anchored to a local time-of-day
+        (the same 5pm America/New_York rollover convention used elsewhere in
+        this pipeline), which shifts by exactly one hour, in UTC terms, at
+        every DST transition. A naive `np.arange(mn, mx + step, step)` grid
+        assumes a constant UTC offset forever, so it silently falls out of
+        alignment with the real data every time DST changes -- confirmed
+        directly against real EUR/USD history: H1/M15 (anchored to fixed
+        UTC-hour/quarter-hour marks, immune to DST) had zero misaligned rows;
+        H4/D (anchored to local time-of-day) had ~66% misaligned, with the
+        very first misaligned H4 row landing on 2010-03-14 -- the exact date
+        the US switched to Daylight Time that year. Once misaligned, every
+        subsequent bar's merge below finds no match and gets forward-filled
+        from the last real one forever, until the next DST flip happens to
+        realign the two by luck.
+
+        Building the grid in local time and localizing each step individually
+        lets pandas work out the correct UTC offset for that specific
+        wall-clock moment, rather than assuming one offset holds forever.
+        """
+        step_seconds = granularity_to_seconds_map[self.granularity]
+        mn_local_naive = (
+            pd.Timestamp(int(mn), unit='s', tz='UTC').tz_convert(self.critical_timezone_str).tz_localize(None)
+        )
+        mx_local_naive = (
+            pd.Timestamp(int(mx), unit='s', tz='UTC').tz_convert(self.critical_timezone_str).tz_localize(None)
+        )
+        # Naive (tz-less) arithmetic here is deliberate: adding a fixed
+        # Timedelta to a naive timestamp is pure wall-clock addition, immune to
+        # DST by construction -- exactly the "same local time(s) every day"
+        # schedule OANDA's own boundaries follow. Only the localization step
+        # below needs to know about DST, one instant at a time.
+        local_grid_naive = pd.date_range(mn_local_naive, mx_local_naive, freq=pd.Timedelta(seconds=step_seconds))
+        # nonexistent='shift_forward': a spring-forward transition skips an
+        # hour of wall-clock time that never happened -- shift into the next
+        # real instant rather than raising. ambiguous='NaT': a fall-back
+        # transition repeats an hour; with no real data to disambiguate which
+        # occurrence was meant for a synthetic grid slot, drop it rather than
+        # guess (real candles, if they exist at that instant, are matched by
+        # exact unix_epoch_s value regardless, since real timestamps are never
+        # ambiguous -- they're already resolved to one true instant).
+        local_grid = local_grid_naive.tz_localize(self.critical_timezone_str, nonexistent='shift_forward', ambiguous='NaT')
+        local_grid = local_grid[~local_grid.isna()]
+        epoch_seconds = (local_grid.tz_convert('UTC') - pd.Timestamp('1970-01-01', tz='UTC')) // pd.Timedelta(seconds=1)
+        return epoch_seconds.to_numpy(dtype='int64')
+
     def compute_df_all_time_diff_market_open(self) -> None:
         mn = np.min(self.df['unix_epoch_s'])
         mx = np.max(self.df['unix_epoch_s'])
-        step = granularity_to_seconds_map[self.granularity]
-        unix_epoch_s_array = np.arange(mn, mx + step, step)
+        unix_epoch_s_array = self._build_expected_timestamp_grid(mn, mx)
 
         df = pd.DataFrame({'unix_epoch_s': unix_epoch_s_array})
 
