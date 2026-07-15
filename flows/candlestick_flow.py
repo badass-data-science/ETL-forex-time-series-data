@@ -1,10 +1,10 @@
 """
 Prefect flows: fetch Oanda candlesticks → InfluxDB.
 
-Single pair (ad-hoc):
+Single instrument (ad-hoc):
     python -m forex.flows.candlestick_flow
 
-All major pairs on a schedule:
+All tracked instruments on a schedule:
     python -m forex.flows.serve
 """
 
@@ -55,9 +55,16 @@ def insert_to_influxdb(records: list[dict]) -> None:
     logger.info('Inserted %d records', len(records))
 
 
-MAJOR_PAIRS: list[str] = [
+# Not just "major pairs" any more (2026-07-14): XAU_USD is a commodity CFD, not a
+# currency pair, and the crosses below aren't majors -- both added to explore
+# whether less USD-major-crowded markets carry more signal (see forex-ML's
+# README). Renamed from MAJOR_PAIRS to reflect that, since it's the single
+# instrument list forward_fill_flow/swap_rate_flow/positioning_flow all default to.
+TRACKED_INSTRUMENTS: list[str] = [
     'EUR_USD', 'USD_JPY', 'GBP_USD', 'USD_CHF',
     'USD_CAD', 'AUD_USD', 'NZD_USD',
+    'XAU_USD',
+    'GBP_JPY', 'EUR_JPY', 'AUD_JPY', 'EUR_GBP', 'AUD_NZD',
 ]
 
 
@@ -73,7 +80,7 @@ def candlestick_flow(config_file: str, instrument: str, granularity: str) -> Non
 def candlestick_batch_flow(
     config_file: str,
     granularity: str,
-    instruments: list[str] = MAJOR_PAIRS,
+    instruments: list[str] = TRACKED_INSTRUMENTS,
 ) -> None:
     """Run candlestick_flow for each instrument sequentially."""
     for instrument in instruments:
