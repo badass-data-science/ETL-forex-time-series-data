@@ -64,7 +64,7 @@ TRACKED_INSTRUMENTS: list[str] = [
     'EUR_USD', 'USD_JPY', 'GBP_USD', 'USD_CHF',
     'USD_CAD', 'AUD_USD', 'NZD_USD',
     'XAU_USD',
-    'GBP_JPY', 'EUR_JPY', 'AUD_JPY', 'EUR_GBP', 'AUD_NZD',
+    'GBP_JPY', 'EUR_JPY', 'AUD_JPY', 'EUR_GBP', 'AUD_NZD', 'EUR_CHF',
 ]
 
 

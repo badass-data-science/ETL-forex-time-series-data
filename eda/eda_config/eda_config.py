@@ -25,6 +25,7 @@ instrument_list = [
     'AUD/JPY',
     'EUR/GBP',
     'AUD/NZD',
+    'EUR/CHF',  # added 2026-07-14, same reason as above
 ]
 
 granularity_list = ['H1', 'H4', 'M15']
