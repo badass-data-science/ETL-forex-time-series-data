@@ -6,13 +6,15 @@ Usage:
 
 Deployments
 -----------
-candlestick-D      daily at 00:05 UTC        (D candles, all major pairs)
-candlestick-H1     5 min past each hour UTC  (H1 candles, all major pairs)
-candlestick-M15    every 15 min UTC          (M15 candles, all major pairs)
-forward-fill-D     daily at 00:15 UTC        (10 min after candlestick-D)
-forward-fill-H1    15 min past each hour UTC (10 min after candlestick-H1)
-forward-fill-M15   every 15 min UTC          (10 min after candlestick-M15)
-swap-rate-D        daily at 20:45 UTC        (all major pairs)
+candlestick-D      daily at 00:05 UTC          (D candles, all major pairs)
+candlestick-H1     5 min past each hour UTC    (H1 candles, all major pairs)
+candlestick-H4     20 min past each hour UTC   (H4 candles, all major pairs)
+candlestick-M15    every 15 min UTC            (M15 candles, all major pairs)
+forward-fill-D     daily at 00:15 UTC          (10 min after candlestick-D)
+forward-fill-H1    15 min past each hour UTC   (10 min after candlestick-H1)
+forward-fill-H4    30 min past each hour UTC   (10 min after candlestick-H4)
+forward-fill-M15   every 15 min UTC            (10 min after candlestick-M15)
+swap-rate-D        daily at 20:45 UTC          (all major pairs)
 
 Each forward-fill deployment is offset 10 minutes after its candlestick
 counterpart so it always runs against freshly-landed candles rather than
@@ -75,6 +77,19 @@ quarter_hourly = candlestick_batch_flow.to_deployment(
     parameters={'config_file': _config_file, 'granularity': 'M15'},
 )
 
+four_hourly = candlestick_batch_flow.to_deployment(
+    name='candlestick-H4',
+    # Polled every hour (offset from candlestick-H1's :05 slot), not just every 4
+    # hours at a guessed boundary -- OANDA's exact H4 candle-close alignment (UTC vs.
+    # NY-timezone-anchored, and whether/how it shifts with DST) isn't confirmed, and
+    # CandlestickETL.get_max_previous_time() already resumes from the last stored
+    # timestamp per granularity, so polling more often than a new candle actually
+    # closes is harmless (finds nothing new) rather than risking a guessed-wrong
+    # offset silently missing candles for hours.
+    cron='20 * * * *',
+    parameters={'config_file': _config_file, 'granularity': 'H4'},
+)
+
 forward_fill_daily = forward_fill_batch_flow.to_deployment(
     name='forward-fill-D',
     cron='15 0 * * *',      # 10 min after candlestick-D
@@ -93,6 +108,12 @@ forward_fill_quarter_hourly = forward_fill_batch_flow.to_deployment(
     parameters={'granularity': 'M15'},
 )
 
+forward_fill_four_hourly = forward_fill_batch_flow.to_deployment(
+    name='forward-fill-H4',
+    cron='30 * * * *',      # 10 min after candlestick-H4
+    parameters={'granularity': 'H4'},
+)
+
 swap_rates_daily = swap_rate_flow.to_deployment(
     name='swap-rate-D',
     cron='45 20 * * *',    # ~15 min before the 5pm NY rollover cutoff (fixed UTC, not DST-aware)
@@ -101,7 +122,7 @@ swap_rates_daily = swap_rate_flow.to_deployment(
 
 if __name__ == '__main__':
     serve(
-        daily, hourly, quarter_hourly,
-        forward_fill_daily, forward_fill_hourly, forward_fill_quarter_hourly,
+        daily, hourly, four_hourly, quarter_hourly,
+        forward_fill_daily, forward_fill_hourly, forward_fill_four_hourly, forward_fill_quarter_hourly,
         swap_rates_daily,
     )

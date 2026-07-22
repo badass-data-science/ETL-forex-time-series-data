@@ -15,7 +15,7 @@ from prefect import flow, task, get_run_logger
 from forex.etl.config import database_config
 from forex.etl.models import ForwardFilledCandlestickRecord
 from forex.etl.pipelines.ForwardFillInator import ForwardFillInator
-from forex.flows.candlestick_flow import MAJOR_PAIRS
+from forex.flows.candlestick_flow import TRACKED_INSTRUMENTS
 from python_tools_and_shortcuts.databases.influxdb.InfluxDbTool import InfluxDbTool
 
 
@@ -71,12 +71,12 @@ def forward_fill_batch_flow(
 ) -> None:
     """Run forward_fill_flow for each instrument sequentially, mirroring
     candlestick_flow.py's candlestick_batch_flow. `instruments` defaults to
-    MAJOR_PAIRS converted from its underscore form ('EUR_USD', the Oanda API
+    TRACKED_INSTRUMENTS converted from its underscore form ('EUR_USD', the Oanda API
     convention) to the slash form InfluxDB actually stores the instrument tag as
     ('EUR/USD') -- see CandlestickETL.compute_candle_features.
     """
     logger = get_run_logger()
-    pairs = instruments if instruments is not None else [p.replace('_', '/') for p in MAJOR_PAIRS]
+    pairs = instruments if instruments is not None else [p.replace('_', '/') for p in TRACKED_INSTRUMENTS]
     for instrument in pairs:
         logger.info('Forward-filling %s %s', instrument, granularity)
         forward_fill_flow(instrument=instrument, granularity=granularity)

@@ -4,12 +4,21 @@ import logging
 from zoneinfo import ZoneInfo
 
 import requests
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
+from tenacity import retry, retry_if_exception, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from forex.etl.models import SwapRateRecord
 from forex.oanda.headers import get_oanda_headers
 
 logger = logging.getLogger(__name__)
+
+
+def _is_not_client_error(exc: BaseException) -> bool:
+    """True unless `exc` is an HTTPError with a 4xx status -- those are
+    deterministic (bad instrument, bad auth), not worth 5 retries at 2s apiece
+    for the same guaranteed outcome."""
+    if not isinstance(exc, requests.HTTPError) or exc.response is None:
+        return True
+    return not (400 <= exc.response.status_code < 500)
 
 
 def _records_from_instruments_response(rj: dict, timestamp: int) -> list[dict]:
@@ -45,9 +54,13 @@ class SwapRateETL:
         self.headers = get_oanda_headers(self.config)
 
     @retry(
+        # 4xx responses (bad instrument, bad auth, etc.) are deterministic --
+        # retrying them 5 times just wastes 4x30s per failure for the same
+        # outcome. Only transient conditions (5xx, connection resets, timeouts)
+        # are worth a retry; a 4xx should surface immediately.
         stop=stop_after_attempt(5),
         wait=wait_fixed(2),
-        retry=retry_if_exception_type(requests.RequestException),
+        retry=retry_if_exception_type(requests.RequestException) & retry_if_exception(_is_not_client_error),
         reraise=True,
     )
     def _fetch_from_api(self, url: str) -> dict:
@@ -69,14 +82,42 @@ class SwapRateETL:
         rj = self._fetch_from_api(self.config['server'] + '/v3/accounts')
         return rj['accounts'][0]['id']
 
-    def get_instrument_financing(self) -> dict:
-        account_id = self.get_account_id()
-        url = (
+    def _instruments_url(self, account_id: str, instruments: list[str]) -> str:
+        return (
             self.config['server']
             + '/v3/accounts/' + account_id
-            + '/instruments?instruments=' + ','.join(self.instruments)
+            + '/instruments?instruments=' + ','.join(instruments)
         )
-        return self._fetch_from_api(url)
+
+    def get_instrument_financing(self) -> dict:
+        """OANDA rejects the ENTIRE batched request (a single HTTP 404,
+        `INSTRUMENT_NOT_TRADEABLE`) if even one requested instrument isn't
+        tradeable on this account -- confirmed directly (XAU_USD 404s on a
+        practice account not provisioned for commodity trading, even though
+        every other instrument in the same batch returns 200 individually).
+        Falls back to one-request-per-instrument on that specific failure, so
+        a single not-yet-tradeable instrument doesn't silently block collecting
+        real rates for everything else. The common case (every instrument
+        tradeable) stays a single batched request."""
+        account_id = self.get_account_id()
+        try:
+            return self._fetch_from_api(self._instruments_url(account_id, self.instruments))
+        except requests.HTTPError as exc:
+            if exc.response is None or exc.response.status_code != 404:
+                raise
+            logger.warning(
+                'Batched instruments request failed (%s) -- falling back to one request per instrument',
+                exc.response.text,
+            )
+
+        all_instruments: list[dict] = []
+        for instrument in self.instruments:
+            try:
+                rj = self._fetch_from_api(self._instruments_url(account_id, [instrument]))
+                all_instruments.extend(rj['instruments'])
+            except requests.HTTPError as exc:
+                logger.warning('Skipping %s: %s', instrument, exc.response.text if exc.response is not None else exc)
+        return {'instruments': all_instruments}
 
     def compute_swap_rates(self) -> None:
         rj = self.get_instrument_financing()

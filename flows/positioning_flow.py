@@ -14,7 +14,7 @@ from prefect import flow, task, get_run_logger
 from forex.etl.PositioningETL import PositioningETL
 from forex.etl.config import database_config
 from forex.etl.models import PositioningBucketRecord
-from forex.flows.candlestick_flow import MAJOR_PAIRS
+from forex.flows.candlestick_flow import TRACKED_INSTRUMENTS
 from python_tools_and_shortcuts.databases.influxdb.InfluxDbTool import InfluxDbTool
 
 
@@ -47,7 +47,7 @@ def insert_positioning_to_influxdb(records: list[dict]) -> None:
 
 
 @flow(name='forex-positioning-etl', log_prints=True)
-def positioning_flow(config_file: str, instruments: list[str] = MAJOR_PAIRS) -> None:
+def positioning_flow(config_file: str, instruments: list[str] = TRACKED_INSTRUMENTS) -> None:
     """No market-hours gate -- OANDA continues to serve its most recent order-book/
     position-book snapshot even outside trading hours (it just won't have updated
     recently)."""

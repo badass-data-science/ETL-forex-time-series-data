@@ -13,7 +13,7 @@ from prefect import flow, task, get_run_logger
 from forex.etl.SwapRateETL import SwapRateETL
 from forex.etl.config import database_config
 from forex.etl.models import SwapRateRecord
-from forex.flows.candlestick_flow import MAJOR_PAIRS
+from forex.flows.candlestick_flow import TRACKED_INSTRUMENTS
 from python_tools_and_shortcuts.databases.influxdb.InfluxDbTool import InfluxDbTool
 
 
@@ -44,7 +44,7 @@ def insert_swap_rates_to_influxdb(records: list[dict]) -> None:
 
 
 @flow(name='forex-swap-rate-etl', log_prints=True)
-def swap_rate_flow(config_file: str, instruments: list[str] = MAJOR_PAIRS) -> None:
+def swap_rate_flow(config_file: str, instruments: list[str] = TRACKED_INSTRUMENTS) -> None:
     """No market-hours gate (unlike candlestick_flow) -- financing rates are an
     account-level daily snapshot, not tied to candle formation, and OANDA continues
     to serve this endpoint outside trading hours."""

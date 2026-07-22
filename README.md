@@ -68,6 +68,31 @@ real market data from imputed placeholder bars — a forward-filled bar has zero
 return and zero volatility by construction, which is otherwise indistinguishable
 from a genuinely quiet real market.
 
+**DST-aware expected-bar grid (fixed 2026-07-14):** `ForwardFillInator` decides
+which timestamps a candle is expected to exist at by building a grid, then
+merging real data onto it — anything unmatched gets forward-filled. That grid
+used to be a fixed number of UTC seconds between bars, forever
+(`np.arange(mn, mx + step, step)`). H1/M15 candles are anchored to fixed
+UTC-hour/quarter-hour marks, so this was fine for them. H4/D candles are
+anchored to a local time-of-day instead (the same 5pm America/New_York-style
+rollover convention used elsewhere in this pipeline), which shifts by exactly
+one hour, in UTC terms, at every DST transition — so the old grid silently fell
+out of alignment with real data twice a year, and every bar after that point
+got forward-filled from the last real match instead of matched to its own real
+value. Confirmed directly against real EUR/USD history before fixing anything:
+H1/M15 had zero misaligned rows across their full history; H4/D had ~66%
+misaligned, with the very first bad H4 row landing on 2010-03-14 — the exact
+date the US switched to Daylight Time that year. The grid is now built in
+local wall-clock time and localized per-instant, so it tracks the real DST
+shift instead of assuming one fixed UTC offset holds forever (verified: zero
+misaligned rows across all 17 years of real H4 history, spanning every spring
+and fall transition in that range). Already-ingested forward-filled H4/D
+history in InfluxDB needs a re-run of `forward_fill_flow` (or the batch
+equivalent) to pick up the correction — `ForwardFillInator.pull_data()` always
+re-pulls the full history from `cutoff_timestamp` and re-writes every row,
+so one full run recomputes everything; there's no separate backfill script
+needed.
+
 `swap-rate` is a separate, much simpler pipeline: a single current snapshot of
 long/short financing (rollover) rates per instrument, not a historical time series
 like candlesticks, so there's no ETL/pipeline/QA class hierarchy for it — just
@@ -139,7 +164,7 @@ forex/
 │   ├── swap_rate_flow.py         # Prefect: fetch swap rates → InfluxDB
 │   ├── economic_calendar_flow.py # Prefect: fetch calendar events → InfluxDB
 │   ├── positioning_flow.py       # Prefect: fetch order/position book → InfluxDB
-│   └── serve.py                  # scheduled deployments for all major pairs
+│   └── serve.py                  # scheduled deployments for all tracked instruments
 ├── oanda/
 │   ├── headers.py                # builds Oanda auth headers
 │   └── config/price_type_map.py  # bid/ask/mid label mapping
@@ -187,7 +212,7 @@ container, because of exactly this.
 
 ## Running
 
-There are two entry points: a one-off run for a single pair, and a scheduled deployment that covers all seven major pairs across three granularities.
+There are two entry points: a one-off run for a single instrument, and a scheduled deployment that covers all 14 tracked instruments across four granularities.
 
 ### Option 1 — One-off run (no Prefect server needed)
 
@@ -202,7 +227,7 @@ candlestick_flow(
 )
 ```
 
-All major pairs for one granularity:
+All tracked instruments for one granularity:
 
 ```python
 from forex.flows.candlestick_flow import candlestick_batch_flow
@@ -217,7 +242,7 @@ from forex.flows.forward_fill_flow import forward_fill_flow
 forward_fill_flow(instrument='EUR/USD', granularity='H1')
 ```
 
-Swap/rollover rates for all major pairs (a single current snapshot, not a
+Swap/rollover rates for all tracked instruments (a single current snapshot, not a
 historical backfill):
 
 ```python
@@ -234,7 +259,7 @@ from forex.flows.economic_calendar_flow import economic_calendar_flow
 economic_calendar_flow(days_ahead=14)
 ```
 
-Order-book/position-book snapshots for all major pairs (back to Oanda's own
+Order-book/position-book snapshots for all tracked instruments (back to Oanda's own
 API/token, same as candlesticks). **Currently blocked** — see "Architecture"
 above; OANDA discontinued this endpoint entirely, so this will raise `400`/`401`
 regardless of account:
@@ -244,7 +269,7 @@ from forex.flows.positioning_flow import positioning_flow
 positioning_flow(config_file='/path/to/oanda_config.json')
 ```
 
-### Option 2 — Scheduled deployment (all major pairs, three granularities)
+### Option 2 — Scheduled deployment (all tracked instruments, four granularities)
 
 Start a local Prefect server once (in its own terminal or as a service):
 
@@ -252,7 +277,7 @@ Start a local Prefect server once (in its own terminal or as a service):
 prefect server start
 ```
 
-Then start the serve process, which registers and runs all seven deployments:
+Then start the serve process, which registers and runs all nine deployments:
 
 ```
 OANDA_CONFIG_FILE=/path/to/oanda_config.json python -m forex.flows.serve
@@ -263,17 +288,30 @@ deployment per granularity, each paired with a forward-fill deployment offset 10
 later so it always runs against freshly-landed candles rather than racing the fetch that
 feeds it:
 
-| Deployment | Cron | Granularity | Pairs |
+| Deployment | Cron | Granularity | Instruments |
 |---|---|---|---|
-| `candlestick-D` | `5 0 * * *` | D | all 7 majors |
-| `candlestick-H1` | `5 * * * *` | H1 | all 7 majors |
-| `candlestick-M15` | `2,17,32,47 * * * *` | M15 | all 7 majors |
-| `forward-fill-D` | `15 0 * * *` | D | all 7 majors |
-| `forward-fill-H1` | `15 * * * *` | H1 | all 7 majors |
-| `forward-fill-M15` | `12,27,42,57 * * * *` | M15 | all 7 majors |
-| `swap-rate-D` | `45 20 * * *` | n/a | all 7 majors |
+| `candlestick-D` | `5 0 * * *` | D | all 14 tracked |
+| `candlestick-H1` | `5 * * * *` | H1 | all 14 tracked |
+| `candlestick-H4` | `20 * * * *` | H4 | all 14 tracked |
+| `candlestick-M15` | `2,17,32,47 * * * *` | M15 | all 14 tracked |
+| `forward-fill-D` | `15 0 * * *` | D | all 14 tracked |
+| `forward-fill-H1` | `15 * * * *` | H1 | all 14 tracked |
+| `forward-fill-H4` | `30 * * * *` | H4 | all 14 tracked |
+| `forward-fill-M15` | `12,27,42,57 * * * *` | M15 | all 14 tracked |
+| `swap-rate-D` | `45 20 * * *` | n/a | all 14 tracked |
 
-The seven major pairs are: EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD, NZD/USD.
+`candlestick-H4`/`forward-fill-H4` poll every hour rather than every 4 hours at a
+guessed boundary offset -- OANDA's exact H4 candle-close alignment (UTC vs.
+NY-timezone-anchored, and whether/how it shifts with DST) isn't confirmed, and
+`CandlestickETL` already resumes from the last stored timestamp per granularity, so
+polling more often than a new candle actually closes just finds nothing new rather
+than risking a wrong guess silently missing candles for hours.
+
+The 14 tracked instruments are: EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD,
+NZD/USD (the seven FX majors), XAU/USD (gold, added 2026-07-14 to test whether a
+different asset class carries more signal than heavily-arbitraged FX majors), and
+six FX crosses added the same window for the same reason: GBP/JPY, EUR/JPY, AUD/JPY,
+EUR/GBP, AUD/NZD, EUR/CHF.
 
 `swap-rate-D` runs at 20:45 UTC — about 15 minutes before the 5pm New York rollover
 cutoff (a fixed UTC time, not DST-aware, the same simplification forex-ML's own
@@ -325,7 +363,7 @@ candlestick_batch_flow(
 )
 ```
 
-Or modify `MAJOR_PAIRS` in `flows/candlestick_flow.py` and restart `serve.py`.
+Or modify `TRACKED_INSTRUMENTS` in `flows/candlestick_flow.py` and restart `serve.py`.
 
 ## Data model
 
