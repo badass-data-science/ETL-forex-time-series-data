@@ -8,6 +8,8 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [0.0.2]
+
 ### Added
 - `AGENTS.md`, orienting notes for AI coding assistants and future
   contributors (layout, test invocation, and repo-specific gotchas like the
