@@ -12,7 +12,7 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 - `AGENTS.md`, orienting notes for AI coding assistants and future
   contributors (layout, test invocation, and repo-specific gotchas like the
   lazy secret-loading pattern and the dormant economic-calendar/positioning
-  pipelines).
+  pipelines). Linked from the top of `README.md`.
 
 ### Changed
 - Reorganized the package into a PyPI-publication-friendly `src/forex/` layout

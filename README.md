@@ -2,6 +2,9 @@
 
 Fetches OHLCV candlestick data from the [Oanda REST API](https://developer.oanda.com/rest-live-v20/introduction/) and writes it to InfluxDB. A second pipeline forward-fills gaps left by weekends, holidays, and market-closed periods, tags every bar with whether it was forward-filled, and writes the result back to InfluxDB as its own measurement.
 
+Contributing (human or AI)? See [`AGENTS.md`](AGENTS.md) for a fast-start
+orientation and the gotchas that aren't obvious from the code.
+
 ## Architecture
 
 ```
