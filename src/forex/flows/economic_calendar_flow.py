@@ -15,7 +15,7 @@ from prefect import flow, task, get_run_logger
 from forex.etl.EconomicCalendarETL import EconomicCalendarETL
 from forex.etl.config import database_config, finnhub_config
 from forex.etl.models import EconomicCalendarEventRecord
-from python_tools_and_shortcuts.databases.influxdb.InfluxDbTool import InfluxDbTool
+from forex.util.influxdb_tool import InfluxDbTool
 
 
 def _make_ifc() -> InfluxDbTool:

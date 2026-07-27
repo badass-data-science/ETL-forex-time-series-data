@@ -165,9 +165,13 @@ src/forex/
 │   ├── economic_calendar_flow.py # Prefect: fetch calendar events → InfluxDB
 │   ├── positioning_flow.py       # Prefect: fetch order/position book → InfluxDB
 │   └── serve.py                  # scheduled deployments for all tracked instruments
-└── oanda/
-    ├── headers.py                # builds Oanda auth headers
-    └── config/price_type_map.py  # bid/ask/mid label mapping
+├── oanda/
+│   ├── headers.py                # builds Oanda auth headers
+│   └── config/price_type_map.py  # bid/ask/mid label mapping
+└── util/                         # vendored-in-house: no external private-repo dependency
+    ├── secrets_manager.py        # get_secret() (AWS Secrets Manager)
+    ├── influxdb_tool.py          # InfluxDbTool (InfluxDB read/write)
+    └── time_conversions.py       # seconds_in_one_{hour,day,week}
 
 tests/
 ├── test_critical_timezone.py
@@ -178,6 +182,10 @@ tests/
 ├── test_positioning_etl.py
 └── test_secrets_isolation.py
 ```
+
+This package has no dependency on any private/internal repo — everything it
+needs is either a PyPI package (see `pyproject.toml`) or lives in `forex.util`
+above. `pip install -e ".[dev]"` and `python -m build` both work standalone.
 
 ## Prerequisites
 
@@ -205,7 +213,7 @@ than `from database_config import INFLUXDB_URL` — the latter freezes the resol
 secret into the importing module's own namespace the moment it's imported (including
 just pytest collecting a test file), permanently, for the life of the process, with
 no way to substitute different credentials afterward. See
-`forex/tests/test_secrets_isolation.py` for the regression test and the real bug
+`tests/test_secrets_isolation.py` for the regression test and the real bug
 this guards against — a downstream consumer's "flaky" integration test turned out to
 be silently querying this real InfluxDB instead of its intended local Docker
 container, because of exactly this.

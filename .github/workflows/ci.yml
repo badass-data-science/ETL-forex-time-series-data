@@ -23,8 +23,4 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run tests
-        env:
-          # `import python_tools_and_shortcuts...` resolves to a CI-only vendored
-          # copy (see ci/vendor/README.md) -- not needed/used outside of CI.
-          PYTHONPATH: ${{ github.workspace }}/ci/vendor
         run: pytest tests -v

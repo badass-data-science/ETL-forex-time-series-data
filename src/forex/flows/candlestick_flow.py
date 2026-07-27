@@ -14,7 +14,7 @@ from forex.critical_timezone import is_market_open
 from forex.etl.CandlestickETL import CandlestickETL
 from forex.etl.config import database_config
 from forex.etl.models import CandlestickRecord
-from python_tools_and_shortcuts.databases.influxdb.InfluxDbTool import InfluxDbTool
+from forex.util.influxdb_tool import InfluxDbTool
 
 
 def _make_ifc() -> InfluxDbTool:

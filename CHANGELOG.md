@@ -19,10 +19,17 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
   separate requirements file, and no longer needs the "checkout to a `forex/`
   directory" workaround now that the package is genuinely importable once
   installed.
+- Ported the three modules this project used from the private
+  `python_tools_and_shortcuts` repo (`get_secret`, `InfluxDbTool`,
+  `time_conversions`) into `src/forex/util/`. The package no longer depends
+  on that repo at all, in CI or otherwise; the old CI-only `ci/vendor/`
+  workaround is removed as a result.
 
 ### Removed
 - `requirements.txt` / `requirements-dev.txt`, superseded by
   `pyproject.toml`'s `dependencies` / `optional-dependencies.dev`.
+- `ci/vendor/`, no longer needed now that `forex.util` carries these modules
+  directly.
 
 ## [0.0.1]
 

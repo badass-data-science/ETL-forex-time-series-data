@@ -1,7 +1,7 @@
 import json
 import functools
 
-from python_tools_and_shortcuts.aws.secrets_manager import get_secret
+from forex.util.secrets_manager import get_secret
 
 _SECRET_NAME = 'Forex/FinnhubApiKey'
 _KEYS = frozenset(['FINNHUB_API_KEY'])
