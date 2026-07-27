@@ -3,7 +3,11 @@
 Fetches OHLCV candlestick data from the [Oanda REST API](https://developer.oanda.com/rest-live-v20/introduction/) and writes it to InfluxDB. A second pipeline forward-fills gaps left by weekends, holidays, and market-closed periods, tags every bar with whether it was forward-filled, and writes the result back to InfluxDB as its own measurement.
 
 Contributing (human or AI)? See [`AGENTS.md`](AGENTS.md) for a fast-start
-orientation and the gotchas that aren't obvious from the code.
+orientation and the gotchas that aren't obvious from the code. There's also a
+[graphify](https://github.com/safishamsi/graphify) knowledge graph of this
+codebase in `graphify-out/`: open `graph.html` in a browser to explore it
+interactively, or read `GRAPH_REPORT.md` for the audit report (god nodes,
+cross-community bridges, suggested questions).
 
 ## Architecture
 
@@ -184,6 +188,11 @@ tests/
 ├── test_economic_calendar_etl.py
 ├── test_positioning_etl.py
 └── test_secrets_isolation.py
+
+graphify-out/          # knowledge graph of this codebase (tracked subset)
+├── graph.json          # raw graph data
+├── graph.html           # interactive viz, open in any browser
+└── GRAPH_REPORT.md      # audit report: god nodes, bridges, suggested questions
 ```
 
 This package has no dependency on any private/internal repo — everything it

@@ -13,6 +13,12 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
   contributors (layout, test invocation, and repo-specific gotchas like the
   lazy secret-loading pattern and the dormant economic-calendar/positioning
   pipelines). Linked from the top of `README.md`.
+- A [graphify](https://github.com/safishamsi/graphify) knowledge graph of the
+  codebase: `graphify-out/graph.json` (raw graph), `graphify-out/graph.html`
+  (interactive browser view), and `graphify-out/GRAPH_REPORT.md` (audit
+  report with god nodes, cross-community bridges, and suggested questions).
+  Working state (cache, cost tracker, manifest, work-memory) stays local —
+  see `.gitignore`.
 
 ### Changed
 - Reorganized the package into a PyPI-publication-friendly `src/forex/` layout
