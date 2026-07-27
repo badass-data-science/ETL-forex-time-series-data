@@ -8,18 +8,18 @@ from forex.critical_timezone import is_market_open
 from forex.etl.CandlestickETL import CandlestickETL
 from forex.etl.config import database_config
 from forex.etl.models import CandlestickRecord
+from forex.util.influxdb_tool import InfluxDbTool
 
 logger = logging.getLogger(__name__)
 
 
 class CandlestickPipeline:
-
     def __init__(
         self,
         instrument: str,
         granularity: str,
-        ifc,
-        allowed_tags: set = CandlestickRecord.TAGS,
+        ifc: InfluxDbTool,
+        allowed_tags: frozenset[str] = CandlestickRecord.TAGS,
         allowed_fields: dict = CandlestickRecord.FIELDS,
         influxdb_bucket: str | None = None,
         run_test_query: bool = False,

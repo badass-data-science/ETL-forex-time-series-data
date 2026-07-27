@@ -11,19 +11,20 @@ from forex.etl.models import CandlestickRecord
 from forex.oanda.config import oanda_config
 from forex.oanda.config.price_type_map import price_type_map
 from forex.oanda.headers import get_oanda_headers
+from forex.util.influxdb_tool import InfluxDbTool
 
 logger = logging.getLogger(__name__)
 
 
 class CandlestickETL:
-
-    TIMEZONE_NAME = 'America/Toronto'  # canonical timezone for this pipeline; must match critical_timezone.py and ForwardFillInator
+    # canonical timezone for this pipeline; must match critical_timezone.py and ForwardFillInator
+    TIMEZONE_NAME = 'America/Toronto'
 
     def __init__(
         self,
         instrument: str,
         granularity: str,
-        ifc,
+        ifc: InfluxDbTool | None,
         measurement_name: str = CandlestickRecord.MEASUREMENT,
         error_retry_interval: int = 2,
         max_retries: int = 5,
@@ -52,6 +53,7 @@ class CandlestickETL:
         self.headers = get_oanda_headers()
 
     def get_max_previous_time(self) -> None:
+        assert self.ifc is not None, 'get_max_previous_time() requires a real InfluxDbTool -- pass a live one, not None'
         instrument_str = self.instrument.replace('_', '/')
         query = f'''
         from(bucket: "{database_config.INFLUXDB_BUCKET}")
@@ -86,11 +88,16 @@ class CandlestickETL:
     def get_instrument_candlesticks(self, end_date: float) -> dict:
         url = (
             oanda_config.OANDA_SERVER
-            + '/v3/instruments/' + self.instrument
-            + '/candles?count=' + str(self.count)
-            + '&price=' + self.price_types
-            + '&granularity=' + self.granularity
-            + '&to=' + str(end_date)
+            + '/v3/instruments/'
+            + self.instrument
+            + '/candles?count='
+            + str(self.count)
+            + '&price='
+            + self.price_types
+            + '&granularity='
+            + self.granularity
+            + '&to='
+            + str(end_date)
         )
         logger.debug('Fetching candlesticks to %s', end_date)
         return self._fetch_from_api(url)
@@ -131,11 +138,7 @@ class CandlestickETL:
         logger.info('Fetched %d candlesticks for %s %s', len(self.insert_many_list), self.instrument, self.granularity)
 
     def create_dataframe(self) -> None:
-        self.df = (
-            pd.DataFrame(self.insert_many_list)
-            .sort_values(by=['instrument', 'time'])
-            .reset_index(drop=True)
-        )
+        self.df = pd.DataFrame(self.insert_many_list).sort_values(by=['instrument', 'time']).reset_index(drop=True)
         self.df = self.df[self.df['time'] >= int(self.start_time)].reset_index(drop=True)
 
         self.time_filtered_df = self.df[self.df['time'] > self.start_time].sort_values(by=['time']).copy()
@@ -149,17 +152,14 @@ class CandlestickETL:
         rename_map = {
             f'{pt}_{old}': f'{pt}_{new}'
             for pt in self.price_type_list
-            for old, new in zip(['o', 'l', 'h', 'c'], ['open', 'low', 'high', 'close'])
+            for old, new in zip(['o', 'l', 'h', 'c'], ['open', 'low', 'high', 'close'], strict=True)
         }
         self.df.rename(columns=rename_map, inplace=True)
         self.df.drop(columns=['time_iso'], inplace=True)
         self.df.rename(columns={'time': 'timestamp'}, inplace=True)
 
-    def make_the_InfluxDB_dict(self) -> None:
-        self.to_influx_list = [
-            CandlestickRecord(**r).to_influx_dict()
-            for r in self.df.to_dict(orient='records')
-        ]
+    def make_the_influxdb_dict(self) -> None:
+        self.to_influx_list = [CandlestickRecord(**r).to_influx_dict() for r in self.df.to_dict(orient='records')]
         logger.info('Prepared %d records for InfluxDB', len(self.to_influx_list))
 
     def fit(self) -> None:
@@ -169,4 +169,4 @@ class CandlestickETL:
         self.create_dataframe()
         self.qa()
         self.clean_up_dataframe()
-        self.make_the_InfluxDB_dict()
+        self.make_the_influxdb_dict()

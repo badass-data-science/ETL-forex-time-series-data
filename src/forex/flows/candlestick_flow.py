@@ -8,23 +8,13 @@ All tracked instruments on a schedule:
     python -m forex.flows.serve
 """
 
-from prefect import flow, task, get_run_logger
+from prefect import flow, get_run_logger, task
 
 from forex.critical_timezone import is_market_open
 from forex.etl.CandlestickETL import CandlestickETL
 from forex.etl.config import database_config
 from forex.etl.models import CandlestickRecord
-from forex.util.influxdb_tool import InfluxDbTool
-
-
-def _make_ifc() -> InfluxDbTool:
-    # database_config lazy-loads credentials from environment variables via a
-    # module-level __getattr__ triggered on attribute access -- accessed here as
-    # database_config.X (not `from database_config import X` at module top level)
-    # so that merely importing this module (e.g. via pytest collecting an unrelated
-    # test file) never requires the env vars to be set; only actually calling
-    # _make_ifc() does.
-    return InfluxDbTool(database_config.INFLUXDB_URL, database_config.INFLUXDB_TOKEN, database_config.INFLUXDB_ORG)
+from forex.flows._common import make_ifc
 
 
 @task(name='check-market-open')
@@ -38,7 +28,7 @@ def check_market_open_task() -> bool:
 @task(name='fetch-candlestick-data', retries=3, retry_delay_seconds=30)
 def fetch_candlestick_data(instrument: str, granularity: str) -> list[dict]:
     logger = get_run_logger()
-    ifc = _make_ifc()
+    ifc = make_ifc()
     etl = CandlestickETL(instrument, granularity, ifc)
     etl.fit()
     logger.info('Fetched %d records for %s %s', len(etl.to_influx_list), instrument, granularity)
@@ -51,8 +41,13 @@ def insert_to_influxdb(records: list[dict]) -> None:
     if not records:
         logger.info('No new records to insert')
         return
-    ifc = _make_ifc()
-    ifc.insert_dictionary_list(records, CandlestickRecord.TAGS, CandlestickRecord.FIELDS, database_config.INFLUXDB_BUCKET)
+    ifc = make_ifc()
+    ifc.insert_dictionary_list(
+        records,
+        CandlestickRecord.TAGS,
+        CandlestickRecord.FIELDS,
+        database_config.INFLUXDB_BUCKET,
+    )
     logger.info('Inserted %d records', len(records))
 
 
@@ -62,10 +57,20 @@ def insert_to_influxdb(records: list[dict]) -> None:
 # README). Renamed from MAJOR_PAIRS to reflect that, since it's the single
 # instrument list forward_fill_flow/swap_rate_flow/positioning_flow all default to.
 TRACKED_INSTRUMENTS: list[str] = [
-    'EUR_USD', 'USD_JPY', 'GBP_USD', 'USD_CHF',
-    'USD_CAD', 'AUD_USD', 'NZD_USD',
+    'EUR_USD',
+    'USD_JPY',
+    'GBP_USD',
+    'USD_CHF',
+    'USD_CAD',
+    'AUD_USD',
+    'NZD_USD',
     'XAU_USD',
-    'GBP_JPY', 'EUR_JPY', 'AUD_JPY', 'EUR_GBP', 'AUD_NZD', 'EUR_CHF',
+    'GBP_JPY',
+    'EUR_JPY',
+    'AUD_JPY',
+    'EUR_GBP',
+    'AUD_NZD',
+    'EUR_CHF',
 ]
 
 

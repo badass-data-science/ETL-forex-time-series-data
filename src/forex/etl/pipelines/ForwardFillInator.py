@@ -5,22 +5,21 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from forex.critical_timezone import is_market_open_at_time
 from forex.eda.eda_config.eda_config import granularity_to_seconds_map
 from forex.etl.models import ForwardFilledCandlestickRecord
+from forex.util.influxdb_tool import InfluxDbTool
 
 logger = logging.getLogger(__name__)
 
 
 class ForwardFillInator:
-
     candlestick_part_list = ['open', 'low', 'high', 'close']
 
     def __init__(
         self,
         instrument: str,
         granularity: str,
-        ifc,
+        ifc: InfluxDbTool | None,
         influxdb_bucket: str = 'forex',
         cutoff_timestamp: int = 1420088160,
         critical_timezone_str: str = 'America/Toronto',
@@ -34,6 +33,7 @@ class ForwardFillInator:
         self.critical_timezone = ZoneInfo(critical_timezone_str)
 
     def pull_data(self) -> None:
+        assert self.ifc is not None, 'pull_data() requires a real InfluxDbTool -- pass a live one, not None'
         query = f'''
             start_s = {self.cutoff_timestamp}
             from(bucket: "{self.INFLUXDB_BUCKET}")
@@ -66,9 +66,8 @@ class ForwardFillInator:
     def perform_time_calculations(self, cut_friday_hour_17: bool = True) -> None:
         df = self.df[self.df['unix_epoch_s'] >= self.cutoff_timestamp].copy()
 
-        df['datetime'] = (
-            pd.to_datetime(df['unix_epoch_s'], unit='s', utc=True)
-            .dt.tz_convert(self.critical_timezone_str)
+        df['datetime'] = pd.to_datetime(df['unix_epoch_s'], unit='s', utc=True).dt.tz_convert(
+            self.critical_timezone_str
         )
 
         df['weekday'] = df['datetime'].dt.weekday
@@ -133,7 +132,11 @@ class ForwardFillInator:
         # guess (real candles, if they exist at that instant, are matched by
         # exact unix_epoch_s value regardless, since real timestamps are never
         # ambiguous -- they're already resolved to one true instant).
-        local_grid = local_grid_naive.tz_localize(self.critical_timezone_str, nonexistent='shift_forward', ambiguous='NaT')
+        local_grid = local_grid_naive.tz_localize(
+            self.critical_timezone_str,
+            nonexistent='shift_forward',
+            ambiguous='NaT',
+        )
         local_grid = local_grid[~local_grid.isna()]
         epoch_seconds = (local_grid.tz_convert('UTC') - pd.Timestamp('1970-01-01', tz='UTC')) // pd.Timedelta(seconds=1)
         return epoch_seconds.to_numpy(dtype='int64')
@@ -145,9 +148,8 @@ class ForwardFillInator:
 
         df = pd.DataFrame({'unix_epoch_s': unix_epoch_s_array})
 
-        df['datetime_test'] = (
-            pd.to_datetime(df['unix_epoch_s'], unit='s', utc=True)
-            .dt.tz_convert(self.critical_timezone_str)
+        df['datetime_test'] = pd.to_datetime(df['unix_epoch_s'], unit='s', utc=True).dt.tz_convert(
+            self.critical_timezone_str
         )
 
         df['weekday_test'] = df['datetime_test'].dt.weekday
@@ -156,9 +158,9 @@ class ForwardFillInator:
 
         # Vectorised market-open flag — equivalent to is_market_open_at_time row-by-row
         df['is_market_open'] = ~(
-            ((df['weekday_test'] == 4) & (df['hour_test'] >= 17)) |
-            (df['weekday_test'] == 5) |
-            ((df['weekday_test'] == 6) & (df['hour_test'] < 17))
+            ((df['weekday_test'] == 4) & (df['hour_test'] >= 17))
+            | (df['weekday_test'] == 5)
+            | ((df['weekday_test'] == 6) & (df['hour_test'] < 17))
         )
 
         df = pd.merge(df, self.df, on=['unix_epoch_s'], how='left')
@@ -177,12 +179,15 @@ class ForwardFillInator:
         assert np.min(np.int8((df_to_test['minute_test'] == df_to_test['minute']).values)) == 1
 
         df.drop(columns=['datetime', 'weekday', 'hour', 'minute'], inplace=True)
-        df.rename(columns={
-            'datetime_test': 'datetime',
-            'weekday_test': 'weekday',
-            'hour_test': 'hour',
-            'minute_test': 'minute',
-        }, inplace=True)
+        df.rename(
+            columns={
+                'datetime_test': 'datetime',
+                'weekday_test': 'weekday',
+                'hour_test': 'hour',
+                'minute_test': 'minute',
+            },
+            inplace=True,
+        )
         df.drop(columns=['lagged_unix_epoch_s', 'diff_unix_epoch_s'], inplace=True)
 
         df = df[df['is_market_open']].drop(columns=['is_market_open']).copy()
@@ -230,18 +235,22 @@ class ForwardFillInator:
 
     def make_the_influxdb_dict(self) -> None:
         columns = [
-            'instrument', 'granularity', 'timestamp',
-            'mid_open', 'mid_high', 'mid_low', 'mid_close', 'spread_close',
-            'volume', 'is_forward_filled',
+            'instrument',
+            'granularity',
+            'timestamp',
+            'mid_open',
+            'mid_high',
+            'mid_low',
+            'mid_close',
+            'spread_close',
+            'volume',
+            'is_forward_filled',
         ]
-        df = (
-            self.df_all_time_diff_market_open_forward_filled
-            .rename(columns={'unix_epoch_s': 'timestamp'})
-            .assign(instrument=self.instrument, granularity=self.granularity)
+        df = self.df_all_time_diff_market_open_forward_filled.rename(columns={'unix_epoch_s': 'timestamp'}).assign(
+            instrument=self.instrument, granularity=self.granularity
         )
         self.to_influx_list = [
-            ForwardFilledCandlestickRecord(**r).to_influx_dict()
-            for r in df[columns].to_dict(orient='records')
+            ForwardFilledCandlestickRecord(**r).to_influx_dict() for r in df[columns].to_dict(orient='records')
         ]
         logger.info('Prepared %d forward-filled records for InfluxDB', len(self.to_influx_list))
 
@@ -261,8 +270,8 @@ class ForwardFillInator:
         y = np.int8((~self.df_all_time_diff_market_open['volume'].isna()).values)
         plt.figure(figsize=[10, 3])
         plt.plot(x, y, '.', color='magenta')
-        plt.yticks([0, 1], [True, False])
-        plt.ylim([-0.4, 1.4])
+        plt.yticks([0, 1], ['True', 'False'])
+        plt.ylim((-0.4, 1.4))
         plt.ylabel('NaN')
         plt.title('Is data point NaN?')
         plt.tight_layout()

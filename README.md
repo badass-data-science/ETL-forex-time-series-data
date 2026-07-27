@@ -1,5 +1,9 @@
 # Forex ETL Pipeline
 
+[![CI](https://github.com/badass-data-science/ETL-forex-time-series-data/actions/workflows/ci.yml/badge.svg)](https://github.com/badass-data-science/ETL-forex-time-series-data/actions/workflows/ci.yml)
+[![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 Fetches OHLCV candlestick data from the [Oanda REST API](https://developer.oanda.com/rest-live-v20/introduction/) and writes it to InfluxDB. A second pipeline forward-fills gaps left by weekends, holidays, and market-closed periods, tags every bar with whether it was forward-filled, and writes the result back to InfluxDB as its own measurement.
 
 Contributing (human or AI)? See [`AGENTS.md`](AGENTS.md) for a fast-start
@@ -166,6 +170,7 @@ src/forex/
 │       ├── CandlestickPipeline.py
 │       └── ForwardFillInator.py
 ├── flows/
+│   ├── _common.py                # make_ifc() -- shared by every flow below
 │   ├── candlestick_flow.py       # Prefect: fetch → InfluxDB (single pair + batch)
 │   ├── forward_fill_flow.py      # Prefect: forward-fill gaps
 │   ├── swap_rate_flow.py         # Prefect: fetch swap rates → InfluxDB
@@ -184,10 +189,12 @@ src/forex/
 tests/
 ├── test_critical_timezone.py
 ├── test_models.py
+├── test_candlestick_etl.py
 ├── test_forward_fill_inator.py
 ├── test_swap_rate_etl.py
 ├── test_economic_calendar_etl.py
 ├── test_positioning_etl.py
+├── test_influxdb_tool.py
 └── test_secrets_isolation.py
 
 graphify-out/          # knowledge graph of this codebase (tracked subset)
@@ -384,6 +391,10 @@ Or modify `TRACKED_INSTRUMENTS` in `src/forex/flows/candlestick_flow.py` and res
 
 ## Data model
 
+All five records below subclass `MeasurementRecord` (`src/forex/etl/models.py`),
+which implements `to_influx_dict()` once from each subclass's `TAGS`/`MEASUREMENT`/
+`FIELDS` — no per-model reimplementation of the tag/field/time split.
+
 `CandlestickRecord` (`src/forex/etl/models.py`) is the single source of truth for the candlestick schema:
 
 | Attribute | Purpose |
@@ -464,13 +475,32 @@ measurement in this pipeline.
 ## Tests
 
 ```
-pytest        # test_critical_timezone.py + test_models.py + test_forward_fill_inator.py
-              # + test_swap_rate_etl.py + test_economic_calendar_etl.py
-              # + test_positioning_etl.py + test_secrets_isolation.py
+pytest        # test_critical_timezone.py + test_models.py + test_candlestick_etl.py
+              # + test_forward_fill_inator.py + test_swap_rate_etl.py
+              # + test_economic_calendar_etl.py + test_positioning_etl.py
+              # + test_influxdb_tool.py + test_secrets_isolation.py
 pytest -v     # verbose output (configured in pyproject.toml)
 ```
 
 No external dependencies — no Oanda, no InfluxDB, no AWS required to run the test suite.
+
+Linting (`ruff check`), formatting (`ruff format --check`), and type checking
+(`mypy`) are configured in `pyproject.toml` and run in CI as a separate job
+(`.github/workflows/ci.yml`):
+
+```
+ruff check src tests
+ruff format --check src tests
+mypy src/forex
+```
+
+Coverage is measured with `pytest-cov` and gated at 65% in CI (current: ~70%
+— see `AGENTS.md` for why flow/orchestration glue code is intentionally not
+chased to 100%):
+
+```
+pytest tests --cov=forex --cov-report=term-missing
+```
 
 `test_forward_fill_inator.py` covers the `is_forward_filled` flag, the actual
 forward-fill propagation, and the InfluxDB record schema. It's also the regression

@@ -66,8 +66,7 @@ class TestToInfluxDict:
 
     def test_ohlc_in_fields(self):
         d = self._dict()
-        for col in ('bid_open', 'bid_high', 'bid_low', 'bid_close',
-                    'ask_open', 'ask_high', 'ask_low', 'ask_close'):
+        for col in ('bid_open', 'bid_high', 'bid_low', 'bid_close', 'ask_open', 'ask_high', 'ask_low', 'ask_close'):
             assert col in d['fields'], f'{col} missing from fields'
 
     def test_tags_not_duplicated_in_fields(self):

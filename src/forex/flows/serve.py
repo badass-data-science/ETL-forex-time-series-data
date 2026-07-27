@@ -58,13 +58,13 @@ from forex.flows.swap_rate_flow import swap_rate_flow
 
 daily = candlestick_batch_flow.to_deployment(
     name='candlestick-D',
-    cron='5 0 * * *',       # 00:05 UTC — well after the 17:00 ET daily candle close
+    cron='5 0 * * *',  # 00:05 UTC — well after the 17:00 ET daily candle close
     parameters={'granularity': 'D'},
 )
 
 hourly = candlestick_batch_flow.to_deployment(
     name='candlestick-H1',
-    cron='5 * * * *',       # 5 min past each hour — gives H1 candle time to close
+    cron='5 * * * *',  # 5 min past each hour — gives H1 candle time to close
     parameters={'granularity': 'H1'},
 )
 
@@ -89,13 +89,13 @@ four_hourly = candlestick_batch_flow.to_deployment(
 
 forward_fill_daily = forward_fill_batch_flow.to_deployment(
     name='forward-fill-D',
-    cron='15 0 * * *',      # 10 min after candlestick-D
+    cron='15 0 * * *',  # 10 min after candlestick-D
     parameters={'granularity': 'D'},
 )
 
 forward_fill_hourly = forward_fill_batch_flow.to_deployment(
     name='forward-fill-H1',
-    cron='15 * * * *',      # 10 min after candlestick-H1
+    cron='15 * * * *',  # 10 min after candlestick-H1
     parameters={'granularity': 'H1'},
 )
 
@@ -107,18 +107,28 @@ forward_fill_quarter_hourly = forward_fill_batch_flow.to_deployment(
 
 forward_fill_four_hourly = forward_fill_batch_flow.to_deployment(
     name='forward-fill-H4',
-    cron='30 * * * *',      # 10 min after candlestick-H4
+    cron='30 * * * *',  # 10 min after candlestick-H4
     parameters={'granularity': 'H4'},
 )
 
 swap_rates_daily = swap_rate_flow.to_deployment(
     name='swap-rate-D',
-    cron='45 20 * * *',    # ~15 min before the 5pm NY rollover cutoff (fixed UTC, not DST-aware)
+    cron='45 20 * * *',  # ~15 min before the 5pm NY rollover cutoff (fixed UTC, not DST-aware)
 )
 
 if __name__ == '__main__':
-    serve(
-        daily, hourly, four_hourly, quarter_hourly,
-        forward_fill_daily, forward_fill_hourly, forward_fill_four_hourly, forward_fill_quarter_hourly,
+    deployments = [
+        daily,
+        hourly,
+        four_hourly,
+        quarter_hourly,
+        forward_fill_daily,
+        forward_fill_hourly,
+        forward_fill_four_hourly,
+        forward_fill_quarter_hourly,
         swap_rates_daily,
-    )
+    ]
+    # to_deployment() is typed as returning RunnerDeployment | Coroutine[...] because
+    # Prefect overloads it for both sync and async flows; called synchronously here
+    # (as in every Prefect example), it's always a RunnerDeployment.
+    serve(*deployments)  # type: ignore[arg-type]

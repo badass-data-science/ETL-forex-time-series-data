@@ -8,19 +8,13 @@ All major pairs on a schedule:
     python -m forex.flows.serve
 """
 
-from prefect import flow, task, get_run_logger
+from prefect import flow, get_run_logger, task
 
-from forex.etl.SwapRateETL import SwapRateETL
 from forex.etl.config import database_config
 from forex.etl.models import SwapRateRecord
+from forex.etl.SwapRateETL import SwapRateETL
+from forex.flows._common import make_ifc
 from forex.flows.candlestick_flow import TRACKED_INSTRUMENTS
-from forex.util.influxdb_tool import InfluxDbTool
-
-
-def _make_ifc() -> InfluxDbTool:
-    # See candlestick_flow._make_ifc for why this is a function, not a module-level
-    # constant -- database_config lazy-loads secrets on attribute access.
-    return InfluxDbTool(database_config.INFLUXDB_URL, database_config.INFLUXDB_TOKEN, database_config.INFLUXDB_ORG)
 
 
 @task(name='fetch-swap-rates', retries=3, retry_delay_seconds=30)
@@ -38,7 +32,7 @@ def insert_swap_rates_to_influxdb(records: list[dict]) -> None:
     if not records:
         logger.info('No swap rate records to insert')
         return
-    ifc = _make_ifc()
+    ifc = make_ifc()
     ifc.insert_dictionary_list(records, SwapRateRecord.TAGS, SwapRateRecord.FIELDS, database_config.INFLUXDB_BUCKET)
     logger.info('Inserted %d swap rate records', len(records))
 

@@ -40,7 +40,7 @@ def test_records_from_book_response_parses_order_book_buckets():
     assert records[0]['bucket_price'] == 1.0990
     assert records[0]['long_count_percent'] == 0.1234
     assert records[0]['short_count_percent'] == 0.0456
-    expected_ts = int(datetime.datetime(2024, 1, 5, 12, 0, 0, tzinfo=datetime.timezone.utc).timestamp())
+    expected_ts = int(datetime.datetime(2024, 1, 5, 12, 0, 0, tzinfo=datetime.UTC).timestamp())
     assert records[0]['timestamp'] == expected_ts
 
 
@@ -75,8 +75,10 @@ def test_compute_positioning_fetches_both_books_for_every_instrument(monkeypatch
     etl.compute_positioning()
 
     assert calls == [
-        ('order', 'EUR_USD'), ('position', 'EUR_USD'),
-        ('order', 'USD_JPY'), ('position', 'USD_JPY'),
+        ('order', 'EUR_USD'),
+        ('position', 'EUR_USD'),
+        ('order', 'USD_JPY'),
+        ('position', 'USD_JPY'),
     ]
     assert len(etl.records) == (2 + 1) * 2  # 2 order buckets + 1 position bucket, per instrument
 

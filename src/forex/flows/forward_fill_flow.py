@@ -10,29 +10,19 @@ Run ad-hoc:
         --param granularity=H1
 """
 
-from prefect import flow, task, get_run_logger
+from prefect import flow, get_run_logger, task
 
 from forex.etl.config import database_config
 from forex.etl.models import ForwardFilledCandlestickRecord
 from forex.etl.pipelines.ForwardFillInator import ForwardFillInator
+from forex.flows._common import make_ifc
 from forex.flows.candlestick_flow import TRACKED_INSTRUMENTS
-from forex.util.influxdb_tool import InfluxDbTool
-
-
-def _make_ifc() -> InfluxDbTool:
-    # database_config lazy-loads credentials from environment variables via a
-    # module-level __getattr__ triggered on attribute access -- accessed here as
-    # database_config.X (not `from database_config import X` at module top level)
-    # so that merely importing this module (e.g. via pytest collecting an unrelated
-    # test file) never requires the env vars to be set; only actually calling
-    # _make_ifc() does.
-    return InfluxDbTool(database_config.INFLUXDB_URL, database_config.INFLUXDB_TOKEN, database_config.INFLUXDB_ORG)
 
 
 @task(name='forward-fill-candlesticks', retries=3, retry_delay_seconds=30)
 def forward_fill_task(instrument: str, granularity: str) -> list[dict]:
     logger = get_run_logger()
-    ifc = _make_ifc()
+    ifc = make_ifc()
     ff = ForwardFillInator(instrument, granularity, ifc, influxdb_bucket=database_config.INFLUXDB_BUCKET)
     ff.fit()
     logger.info(
@@ -51,9 +41,11 @@ def insert_to_influxdb(records: list[dict]) -> None:
     if not records:
         logger.info('No forward-filled records to insert')
         return
-    ifc = _make_ifc()
+    ifc = make_ifc()
     ifc.insert_dictionary_list(
-        records, ForwardFilledCandlestickRecord.TAGS, ForwardFilledCandlestickRecord.FIELDS,
+        records,
+        ForwardFilledCandlestickRecord.TAGS,
+        ForwardFilledCandlestickRecord.FIELDS,
         database_config.INFLUXDB_BUCKET,
     )
     logger.info('Inserted %d forward-filled records', len(records))

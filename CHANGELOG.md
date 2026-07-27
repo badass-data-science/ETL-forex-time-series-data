@@ -8,6 +8,60 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [0.0.3]
+
+### Added
+- Linting (`ruff check`), formatting (`ruff format`), type checking
+  (`mypy`), and coverage (`pytest-cov`), all configured in `pyproject.toml`
+  and run in CI as a separate `lint` job. `ruff`'s line length is set to 120
+  (not the default 88) and quote style kept single (not ruff's double-quote
+  default) to match this codebase's deliberately dense comments/docstrings
+  and existing string style rather than reformatting every line for its own
+  sake; `SIM103` is disabled where inlining would hurt readability (see
+  `critical_timezone.py`'s guard clauses). Coverage is gated at 65%
+  (current: ~70%) — Prefect flow/task orchestration wrappers are
+  intentionally not chased to 100%; see `AGENTS.md`.
+- README badges (CI status, Python version, license).
+- Dedicated test coverage for `CandlestickETL` (`tests/test_candlestick_etl.py`)
+  and `InfluxDbTool` (`tests/test_influxdb_tool.py`) — previously the only
+  ETL class and the only util module with zero direct test coverage.
+  A regression test for the `AttributeError`/`KeyError` config-loading fix
+  was also added (`test_secrets_isolation.py`).
+- `MeasurementRecord`, a shared base class in `models.py` for
+  `to_influx_dict()` — every one of the 5 Pydantic record models previously
+  reimplemented an identical tag/field/time split by hand.
+- `forex/flows/_common.py`'s `make_ifc()` — the identical `_make_ifc()`
+  helper was duplicated across all 5 flow modules; now defined once.
+
+### Changed
+- `InfluxDbTool` (owned by this repo, not vendored) renamed its
+  SCREAMING_CASE constructor/method parameters to standard snake_case
+  (`INFLUXDB_URL` → `url`, `ALLOWED_TAGS` → `allowed_tags`, etc.) and picked
+  up full type hints throughout.
+- `CandlestickETL.make_the_InfluxDB_dict()` renamed to
+  `make_the_influxdb_dict()` for consistency with every other ETL class's
+  identically-named method.
+- `ifc` parameters (`CandlestickETL`, `CandlestickPipeline`,
+  `ForwardFillInator`) are now typed as `InfluxDbTool` (or `InfluxDbTool |
+  None` where tests legitimately construct one without a live connection),
+  closing a real gap where mypy couldn't check these call sites at all.
+
+### Fixed
+- A handful of real issues `ruff`/`mypy` surfaced: two dead imports
+  (`is_market_open_at_time` in `ForwardFillInator.py`, `pytest` in
+  `test_critical_timezone.py`), a `zip()` without `strict=`, an imprecise
+  `frozenset[str]`-vs-`set` type hint on `CandlestickPipeline.__init__`, and
+  a `plt.yticks` call passing `bool` labels instead of `str`.
+- `InfluxDbTool.validate_point` was missing `@staticmethod` despite having
+  no `self` and always being called as `InfluxDbTool.validate_point(...)` —
+  latent bug waiting for someone to call it on an instance instead.
+- `InfluxDbTool.insert_dictionary_list`'s `write_precision_str` argument was
+  never actually passed through to `validate_point` (which always used its
+  own default), so a caller overriding write precision would get a mismatch
+  between each point's embedded precision and the batch write's declared
+  precision. Dormant in practice — nothing in this repo currently overrides
+  the default — but fixed as part of the `InfluxDbTool` cleanup.
+
 ## [0.0.2]
 
 ### Added

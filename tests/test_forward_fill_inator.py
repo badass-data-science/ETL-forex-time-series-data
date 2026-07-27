@@ -12,15 +12,17 @@ TZ = ZoneInfo('America/Toronto')
 
 def _make_hourly_frame(start: datetime.datetime, n: int, missing_index: int | None = None) -> pd.DataFrame:
     timestamps = [start + datetime.timedelta(hours=i) for i in range(n)]
-    df = pd.DataFrame({
-        'unix_epoch_s': [int(t.timestamp()) for t in timestamps],
-        'volume': [100.0 + i for i in range(n)],
-        'mid_open': [1.10 + 0.0001 * i for i in range(n)],
-        'mid_high': [1.101 + 0.0001 * i for i in range(n)],
-        'mid_low': [1.099 + 0.0001 * i for i in range(n)],
-        'mid_close': [1.1005 + 0.0001 * i for i in range(n)],
-        'spread_close': [0.0002 for _ in range(n)],
-    })
+    df = pd.DataFrame(
+        {
+            'unix_epoch_s': [int(t.timestamp()) for t in timestamps],
+            'volume': [100.0 + i for i in range(n)],
+            'mid_open': [1.10 + 0.0001 * i for i in range(n)],
+            'mid_high': [1.101 + 0.0001 * i for i in range(n)],
+            'mid_low': [1.099 + 0.0001 * i for i in range(n)],
+            'mid_close': [1.1005 + 0.0001 * i for i in range(n)],
+            'spread_close': [0.0002 for _ in range(n)],
+        }
+    )
     if missing_index is not None:
         df = df.drop(index=missing_index).reset_index(drop=True)
     return df
@@ -50,10 +52,7 @@ class TestIsForwardFilledFlag:
         df = _make_hourly_frame(start, n=10, missing_index=5)
 
         inator = _run_through_forward_fill(df)
-        result = (
-            inator.df_all_time_diff_market_open_forward_filled
-            .sort_values('unix_epoch_s').reset_index(drop=True)
-        )
+        result = inator.df_all_time_diff_market_open_forward_filled.sort_values('unix_epoch_s').reset_index(drop=True)
 
         missing_ts = int((start + datetime.timedelta(hours=5)).timestamp())
         assert result['is_forward_filled'].sum() == 1
@@ -72,10 +71,7 @@ class TestIsForwardFilledFlag:
         df = _make_hourly_frame(start, n=10, missing_index=5)
 
         inator = _run_through_forward_fill(df)
-        result = (
-            inator.df_all_time_diff_market_open_forward_filled
-            .sort_values('unix_epoch_s').reset_index(drop=True)
-        )
+        result = inator.df_all_time_diff_market_open_forward_filled.sort_values('unix_epoch_s').reset_index(drop=True)
 
         missing_ts = int((start + datetime.timedelta(hours=5)).timestamp())
         prev_ts = int((start + datetime.timedelta(hours=4)).timestamp())
@@ -98,15 +94,17 @@ class TestIsForwardFilledFlag:
 
 def _make_local_time_frame(timestamps: list[datetime.datetime]) -> pd.DataFrame:
     n = len(timestamps)
-    return pd.DataFrame({
-        'unix_epoch_s': [int(t.timestamp()) for t in timestamps],
-        'volume': [100.0 + i for i in range(n)],
-        'mid_open': [1.10 + 0.0001 * i for i in range(n)],
-        'mid_high': [1.101 + 0.0001 * i for i in range(n)],
-        'mid_low': [1.099 + 0.0001 * i for i in range(n)],
-        'mid_close': [1.1005 + 0.0001 * i for i in range(n)],
-        'spread_close': [0.0002 for _ in range(n)],
-    })
+    return pd.DataFrame(
+        {
+            'unix_epoch_s': [int(t.timestamp()) for t in timestamps],
+            'volume': [100.0 + i for i in range(n)],
+            'mid_open': [1.10 + 0.0001 * i for i in range(n)],
+            'mid_high': [1.101 + 0.0001 * i for i in range(n)],
+            'mid_low': [1.099 + 0.0001 * i for i in range(n)],
+            'mid_close': [1.1005 + 0.0001 * i for i in range(n)],
+            'spread_close': [0.0002 for _ in range(n)],
+        }
+    )
 
 
 class TestDstAwareGrid:
@@ -143,10 +141,9 @@ class TestDstAwareGrid:
         # what this test checks); Monday, fully open all day, gets the full set.
         friday_hours = [1, 5, 9, 13]
         monday_hours = [1, 5, 9, 13, 21]
-        subject_timestamps = (
-            [datetime.datetime(2024, 3, 8, h, 0, tzinfo=TZ) for h in friday_hours]
-            + [datetime.datetime(2024, 3, 11, h, 0, tzinfo=TZ) for h in monday_hours]
-        )
+        subject_timestamps = [datetime.datetime(2024, 3, 8, h, 0, tzinfo=TZ) for h in friday_hours] + [
+            datetime.datetime(2024, 3, 11, h, 0, tzinfo=TZ) for h in monday_hours
+        ]
         df = _make_local_time_frame(buffer_timestamps + subject_timestamps)
 
         inator = _run_through_forward_fill(df, granularity='H4')
@@ -154,11 +151,11 @@ class TestDstAwareGrid:
 
         subject_ts_set = {int(t.timestamp()) for t in subject_timestamps}
         result_timestamps = set(result['unix_epoch_s'])
-        assert subject_ts_set <= result_timestamps, "a real bar went missing from the grid entirely"
+        assert subject_ts_set <= result_timestamps, 'a real bar went missing from the grid entirely'
         for ts in subject_ts_set:
             row = result.loc[result['unix_epoch_s'] == ts].iloc[0]
             assert not row['is_forward_filled'], (
-                f"real bar at {ts} was wrongly treated as missing/forward-filled across the DST transition"
+                f'real bar at {ts} was wrongly treated as missing/forward-filled across the DST transition'
             )
 
     def test_daily_grid_survives_a_spring_forward_transition(self):
@@ -170,8 +167,11 @@ class TestDstAwareGrid:
         # One bar per real trading day at a fixed local time, spanning the
         # same March 2024 spring-forward.
         days = [
-            datetime.date(2024, 3, 6), datetime.date(2024, 3, 7), datetime.date(2024, 3, 8),
-            datetime.date(2024, 3, 11), datetime.date(2024, 3, 12),
+            datetime.date(2024, 3, 6),
+            datetime.date(2024, 3, 7),
+            datetime.date(2024, 3, 8),
+            datetime.date(2024, 3, 11),
+            datetime.date(2024, 3, 12),
         ]
         subject_timestamps = [datetime.datetime(d.year, d.month, d.day, 9, 0, tzinfo=TZ) for d in days]
         df = _make_local_time_frame(buffer_timestamps + subject_timestamps)
@@ -181,11 +181,11 @@ class TestDstAwareGrid:
 
         subject_ts_set = {int(t.timestamp()) for t in subject_timestamps}
         result_timestamps = set(result['unix_epoch_s'])
-        assert subject_ts_set <= result_timestamps, "a real bar went missing from the grid entirely"
+        assert subject_ts_set <= result_timestamps, 'a real bar went missing from the grid entirely'
         for ts in subject_ts_set:
             row = result.loc[result['unix_epoch_s'] == ts].iloc[0]
             assert not row['is_forward_filled'], (
-                f"real bar at {ts} was wrongly treated as missing/forward-filled across the DST transition"
+                f'real bar at {ts} was wrongly treated as missing/forward-filled across the DST transition'
             )
 
 
@@ -203,13 +203,17 @@ class TestMakeTheInfluxDbDict:
         # lagged_unix_epoch_s is NaN with nothing before it, unrelated to this test)
         assert len(by_time) == 8
         assert by_time[missing_ts]['fields']['is_forward_filled'] is True
-        assert all(
-            r['fields']['is_forward_filled'] is False for t, r in by_time.items() if t != missing_ts
-        )
+        assert all(r['fields']['is_forward_filled'] is False for t, r in by_time.items() if t != missing_ts)
 
         sample = next(iter(by_time.values()))
         assert sample['measurement'] == 'forward-filled candlestick'
         assert sample['tags'] == {'instrument': 'EUR/USD', 'granularity': 'H1'}
         assert set(sample['fields']) == {
-            'mid_open', 'mid_high', 'mid_low', 'mid_close', 'spread_close', 'volume', 'is_forward_filled',
+            'mid_open',
+            'mid_high',
+            'mid_low',
+            'mid_close',
+            'spread_close',
+            'volume',
+            'is_forward_filled',
         }
