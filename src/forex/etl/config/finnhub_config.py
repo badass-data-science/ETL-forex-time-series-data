@@ -1,10 +1,10 @@
 import json
 import functools
 
-from python_tools_and_shortcuts.aws.secrets_manager import get_secret
+from forex.util.secrets_manager import get_secret
 
-_SECRET_NAME = 'Forex/InfluxDbPassword'
-_KEYS = frozenset(['INFLUXDB_URL', 'INFLUXDB_TOKEN', 'INFLUXDB_ORG', 'INFLUXDB_BUCKET'])
+_SECRET_NAME = 'Forex/FinnhubApiKey'
+_KEYS = frozenset(['FINNHUB_API_KEY'])
 
 @functools.lru_cache(maxsize=None)
 def _load_secret():

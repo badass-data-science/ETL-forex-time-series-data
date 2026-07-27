@@ -1,9 +1,0 @@
-prefect
-pydantic
-requests
-tenacity
-pandas
-numpy
-matplotlib
-boto3
-influxdb-client

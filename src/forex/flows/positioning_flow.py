@@ -15,7 +15,7 @@ from forex.etl.PositioningETL import PositioningETL
 from forex.etl.config import database_config
 from forex.etl.models import PositioningBucketRecord
 from forex.flows.candlestick_flow import TRACKED_INSTRUMENTS
-from python_tools_and_shortcuts.databases.influxdb.InfluxDbTool import InfluxDbTool
+from forex.util.influxdb_tool import InfluxDbTool
 
 
 def _make_ifc() -> InfluxDbTool:

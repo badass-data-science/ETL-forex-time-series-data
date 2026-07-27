@@ -2,6 +2,13 @@
 
 Fetches OHLCV candlestick data from the [Oanda REST API](https://developer.oanda.com/rest-live-v20/introduction/) and writes it to InfluxDB. A second pipeline forward-fills gaps left by weekends, holidays, and market-closed periods, tags every bar with whether it was forward-filled, and writes the result back to InfluxDB as its own measurement.
 
+Contributing (human or AI)? See [`AGENTS.md`](AGENTS.md) for a fast-start
+orientation and the gotchas that aren't obvious from the code. There's also a
+[graphify](https://github.com/safishamsi/graphify) knowledge graph of this
+codebase in `graphify-out/`: open `graph.html` in a browser to explore it
+interactively, or read `GRAPH_REPORT.md` for the audit report (god nodes,
+cross-community bridges, suggested questions).
+
 ## Architecture
 
 ```
@@ -137,12 +144,12 @@ with a $22,000/year minimum. Abandoned for now on cost, same as the economic
 calendar above — the code is otherwise complete, but there's no plan-upgrade path
 here, only a fundamentally different (and expensive) product.
 
-Every pipeline is wrapped as a **Prefect flow** (`flows/`) for scheduling and observability.
+Every pipeline is wrapped as a **Prefect flow** (`src/forex/flows/`) for scheduling and observability.
 
 ## Project layout
 
 ```
-forex/
+src/forex/
 ├── critical_timezone.py          # market-hours gate (Toronto tz)
 ├── etl/
 │   ├── CandlestickETL.py         # API fetch + transform
@@ -168,20 +175,33 @@ forex/
 ├── oanda/
 │   ├── headers.py                # builds Oanda auth headers
 │   └── config/price_type_map.py  # bid/ask/mid label mapping
-└── tests/
-    ├── test_critical_timezone.py
-    ├── test_models.py
-    ├── test_forward_fill_inator.py
-    ├── test_swap_rate_etl.py
-    ├── test_economic_calendar_etl.py
-    ├── test_positioning_etl.py
-    └── test_secrets_isolation.py
+└── util/                         # vendored-in-house: no external private-repo dependency
+    ├── secrets_manager.py        # get_secret() (AWS Secrets Manager)
+    ├── influxdb_tool.py          # InfluxDbTool (InfluxDB read/write)
+    └── time_conversions.py       # seconds_in_one_{hour,day,week}
+
+tests/
+├── test_critical_timezone.py
+├── test_models.py
+├── test_forward_fill_inator.py
+├── test_swap_rate_etl.py
+├── test_economic_calendar_etl.py
+├── test_positioning_etl.py
+└── test_secrets_isolation.py
+
+graphify-out/          # knowledge graph of this codebase (tracked subset)
+├── graph.json          # raw graph data
+├── graph.html           # interactive viz, open in any browser
+└── GRAPH_REPORT.md      # audit report: god nodes, bridges, suggested questions
 ```
+
+This package has no dependency on any private/internal repo — everything it
+needs is either a PyPI package (see `pyproject.toml`) or lives in `forex.util`
+above. `pip install -e ".[dev]"` and `python -m build` both work standalone.
 
 ## Prerequisites
 
 ```
-cd Data-Science/Data-Engineering/ETL
 pip install -e ".[dev]"          # installs prefect, pydantic, tenacity, etc.
 ```
 
@@ -205,7 +225,7 @@ than `from database_config import INFLUXDB_URL` — the latter freezes the resol
 secret into the importing module's own namespace the moment it's imported (including
 just pytest collecting a test file), permanently, for the life of the process, with
 no way to substitute different credentials afterward. See
-`forex/tests/test_secrets_isolation.py` for the regression test and the real bug
+`tests/test_secrets_isolation.py` for the regression test and the real bug
 this guards against — a downstream consumer's "flaky" integration test turned out to
 be silently querying this real InfluxDB instead of its intended local Docker
 container, because of exactly this.
@@ -363,11 +383,11 @@ candlestick_batch_flow(
 )
 ```
 
-Or modify `TRACKED_INSTRUMENTS` in `flows/candlestick_flow.py` and restart `serve.py`.
+Or modify `TRACKED_INSTRUMENTS` in `src/forex/flows/candlestick_flow.py` and restart `serve.py`.
 
 ## Data model
 
-`CandlestickRecord` (`etl/models.py`) is the single source of truth for the candlestick schema:
+`CandlestickRecord` (`src/forex/etl/models.py`) is the single source of truth for the candlestick schema:
 
 | Attribute | Purpose |
 |---|---|
@@ -378,7 +398,7 @@ Or modify `TRACKED_INSTRUMENTS` in `flows/candlestick_flow.py` and restart `serv
 
 Pydantic enforces types on ingestion; `to_influx_dict()` produces the InfluxDB write payload.
 
-`ForwardFilledCandlestickRecord` (`etl/models.py`) is the schema for the forward-filled output:
+`ForwardFilledCandlestickRecord` (`src/forex/etl/models.py`) is the schema for the forward-filled output:
 
 | Attribute | Purpose |
 |---|---|
@@ -393,7 +413,7 @@ candle at that point, `False` otherwise. It survives the subsequent forward-fill
 step untouched (`ffill()` only fills genuine `NaN`s in the OHLCV columns; this field
 is never null to begin with).
 
-`SwapRateRecord` (`etl/models.py`) is the schema for per-instrument financing rates:
+`SwapRateRecord` (`src/forex/etl/models.py`) is the schema for per-instrument financing rates:
 
 | Attribute | Purpose |
 |---|---|
@@ -408,7 +428,7 @@ an account-level daily snapshot per instrument, not tied to any candle timeframe
 `-0.0067` for the long side), charged (or credited, if positive) once per day a
 position is held past the 5pm New York rollover cutoff.
 
-`EconomicCalendarEventRecord` (`etl/models.py`) is the schema for scheduled
+`EconomicCalendarEventRecord` (`src/forex/etl/models.py`) is the schema for scheduled
 economic release events (Finnhub, not Oanda):
 
 | Attribute | Purpose |
@@ -426,7 +446,7 @@ event has no `actual` yet (and possibly no `estimate` either), so `to_influx_dic
 omits any `None` field entirely rather than writing it as null — the one place this
 schema's serialization differs from the other three records above.
 
-`PositioningBucketRecord` (`etl/models.py`) is the schema for one price bucket of
+`PositioningBucketRecord` (`src/forex/etl/models.py`) is the schema for one price bucket of
 an order-book or position-book snapshot:
 
 | Attribute | Purpose |
@@ -447,7 +467,6 @@ measurement in this pipeline.
 ## Tests
 
 ```
-cd Data-Science/Data-Engineering/ETL
 pytest        # test_critical_timezone.py + test_models.py + test_forward_fill_inator.py
               # + test_swap_rate_etl.py + test_economic_calendar_etl.py
               # + test_positioning_etl.py + test_secrets_isolation.py
