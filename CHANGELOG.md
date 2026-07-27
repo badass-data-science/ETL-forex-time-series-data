@@ -8,6 +8,8 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 
 ## [Unreleased]
 
+## [0.0.3]
+
 ### Added
 - Linting (`ruff check`), formatting (`ruff format`), type checking
   (`mypy`), and coverage (`pytest-cov`), all configured in `pyproject.toml`
