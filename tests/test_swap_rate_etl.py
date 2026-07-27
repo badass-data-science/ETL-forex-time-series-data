@@ -3,6 +3,7 @@ from __future__ import annotations
 import requests
 
 from forex.etl.SwapRateETL import SwapRateETL, _records_from_instruments_response
+from forex.oanda.config import oanda_config
 
 
 def _http_error(status_code: int, text: str) -> requests.HTTPError:
@@ -31,15 +32,16 @@ def test_records_from_instruments_response_handles_an_empty_list():
     assert _records_from_instruments_response({'instruments': []}, timestamp=0) == []
 
 
-def test_get_account_id_uses_config_value_when_present():
-    etl = SwapRateETL(['EUR/USD'], config_file='unused')
-    etl.config = {'server': 'https://example.test', 'account_id': '001-001-1234567-001'}
+def test_get_account_id_uses_config_value_when_present(monkeypatch):
+    monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', '001-001-1234567-001', raising=False)
+    etl = SwapRateETL(['EUR/USD'])
     assert etl.get_account_id() == '001-001-1234567-001'
 
 
 def test_get_account_id_resolves_via_api_when_absent(monkeypatch):
-    etl = SwapRateETL(['EUR/USD'], config_file='unused')
-    etl.config = {'server': 'https://example.test'}
+    monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', None, raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
+    etl = SwapRateETL(['EUR/USD'])
 
     calls = []
 
@@ -54,8 +56,9 @@ def test_get_account_id_resolves_via_api_when_absent(monkeypatch):
 
 
 def test_compute_swap_rates_populates_records_from_the_api_response(monkeypatch):
-    etl = SwapRateETL(['EUR/USD', 'USD/JPY'], config_file='unused')
-    etl.config = {'server': 'https://example.test', 'account_id': '001-001-1234567-001'}
+    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', '001-001-1234567-001', raising=False)
+    etl = SwapRateETL(['EUR/USD', 'USD/JPY'])
 
     def fake_fetch(url):
         assert url == (
@@ -83,8 +86,9 @@ def test_get_instrument_financing_falls_back_to_per_instrument_when_batch_404s(m
     instrument in the same batch returns 200 individually). Without a fallback,
     one not-yet-tradeable instrument would silently block collecting real rates
     for everything else in the batch too."""
-    etl = SwapRateETL(['EUR/USD', 'XAU/USD', 'USD/JPY'], config_file='unused')
-    etl.config = {'server': 'https://example.test', 'account_id': '001-001-1234567-001'}
+    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', '001-001-1234567-001', raising=False)
+    etl = SwapRateETL(['EUR/USD', 'XAU/USD', 'USD/JPY'])
 
     calls = []
 
@@ -108,13 +112,12 @@ def test_get_instrument_financing_falls_back_to_per_instrument_when_batch_404s(m
     assert len(calls) == 4  # 1 batch attempt + 3 per-instrument fallback calls
 
 
-def test_fit_produces_valid_influxdb_dicts(monkeypatch, tmp_path):
-    config_file = tmp_path / 'oanda_config.json'
-    config_file.write_text(
-        '{"server": "https://example.test", "token": "fake", '
-        '"oanda_date_time_format": "UNIX", "account_id": "001-001-1234567-001"}'
-    )
-    etl = SwapRateETL(['EUR/USD'], config_file=str(config_file))
+def test_fit_produces_valid_influxdb_dicts(monkeypatch):
+    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_TOKEN', 'fake', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_DATE_TIME_FORMAT', 'UNIX', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', '001-001-1234567-001', raising=False)
+    etl = SwapRateETL(['EUR/USD'])
 
     def fake_fetch(url):
         return {'instruments': [{'name': 'EUR_USD', 'financing': {'longRate': '-0.0067', 'shortRate': '-0.0038'}}]}

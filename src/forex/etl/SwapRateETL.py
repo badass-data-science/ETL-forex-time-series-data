@@ -1,5 +1,4 @@
 import datetime
-import json
 import logging
 from zoneinfo import ZoneInfo
 
@@ -7,6 +6,7 @@ import requests
 from tenacity import retry, retry_if_exception, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from forex.etl.models import SwapRateRecord
+from forex.oanda.config import oanda_config
 from forex.oanda.headers import get_oanda_headers
 
 logger = logging.getLogger(__name__)
@@ -43,15 +43,12 @@ class SwapRateETL:
 
     TIMEZONE_NAME = 'America/Toronto'  # matches CandlestickETL/ForwardFillInator
 
-    def __init__(self, instruments: list[str], config_file: str) -> None:
+    def __init__(self, instruments: list[str]) -> None:
         self.instruments = [i.replace('/', '_') for i in instruments]
-        self.config_file = config_file
         self.timezone = ZoneInfo(self.TIMEZONE_NAME)
 
     def get_headers(self) -> None:
-        with open(self.config_file) as f:
-            self.config = json.load(f)
-        self.headers = get_oanda_headers(self.config)
+        self.headers = get_oanda_headers()
 
     @retry(
         # 4xx responses (bad instrument, bad auth, etc.) are deterministic --
@@ -70,21 +67,20 @@ class SwapRateETL:
 
     def get_account_id(self) -> str:
         """The financing-rate endpoint is scoped under /v3/accounts/{accountID}/
-        instruments. Uses config['account_id'] if present (the Oanda config JSON is
-        documented in the README as having this key, though no other code in this
-        repo currently reads it); otherwise resolves it via /v3/accounts, assuming
-        one account per API token -- the same implicit assumption the rest of this
+        instruments. Uses OANDA_ACCOUNT_ID if set (though no other code in this repo
+        currently reads it); otherwise resolves it via /v3/accounts, assuming one
+        account per API token -- the same implicit assumption the rest of this
         pipeline already makes via a single Bearer token. Takes the first account if
         more than one exists."""
-        account_id = self.config.get('account_id')
+        account_id = oanda_config.OANDA_ACCOUNT_ID
         if account_id:
             return account_id
-        rj = self._fetch_from_api(self.config['server'] + '/v3/accounts')
+        rj = self._fetch_from_api(oanda_config.OANDA_SERVER + '/v3/accounts')
         return rj['accounts'][0]['id']
 
     def _instruments_url(self, account_id: str, instruments: list[str]) -> str:
         return (
-            self.config['server']
+            oanda_config.OANDA_SERVER
             + '/v3/accounts/' + account_id
             + '/instruments?instruments=' + ','.join(instruments)
         )

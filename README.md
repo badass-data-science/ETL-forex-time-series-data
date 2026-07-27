@@ -174,7 +174,9 @@ src/forex/
 │   └── serve.py                  # scheduled deployments for all tracked instruments
 ├── oanda/
 │   ├── headers.py                # builds Oanda auth headers
-│   └── config/price_type_map.py  # bid/ask/mid label mapping
+│   └── config/
+│       ├── oanda_config.py       # Oanda credentials (via environment variables)
+│       └── price_type_map.py     # bid/ask/mid label mapping
 └── util/                         # vendored-in-house: no external private-repo dependency
     ├── influxdb_tool.py          # InfluxDbTool (InfluxDB read/write)
     └── time_conversions.py       # seconds_in_one_{hour,day,week}
@@ -205,10 +207,10 @@ pip install -e ".[dev]"          # installs prefect, pydantic, tenacity, etc.
 ```
 
 You also need:
-- An **Oanda config JSON** file with `server`, `token`, and `oanda_date_time_format`
-  keys (`CandlestickETL`/`SwapRateETL` read these). `SwapRateETL` also uses an
-  `account_id` key if present, resolving it via `/v3/accounts` otherwise (see
-  "Swap/rollover rates" below).
+- **Environment variables** for Oanda credentials: `OANDA_SERVER`, `OANDA_TOKEN`,
+  and `OANDA_DATE_TIME_FORMAT` (`CandlestickETL`/`SwapRateETL`/`PositioningETL` all
+  read these). Optionally `OANDA_ACCOUNT_ID` — `SwapRateETL` uses it if set,
+  resolving it via `/v3/accounts` otherwise (see "Swap/rollover rates" below).
 - **Environment variables** for InfluxDB credentials and the Finnhub API key:
   `INFLUXDB_URL`, `INFLUXDB_TOKEN`, `INFLUXDB_ORG`, `INFLUXDB_BUCKET`, and
   `FINNHUB_API_KEY`.
@@ -218,17 +220,17 @@ You also need:
   key alone isn't enough. See "Architecture" above.
 - A running **InfluxDB** instance
 
-`database_config`/`finnhub_config` both lazy-load these environment variables via a
-module-level `__getattr__` triggered on attribute access. Every module that needs
-them accesses it as `database_config.INFLUXDB_URL` (resolved fresh each call) rather
-than `from database_config import INFLUXDB_URL` — the latter freezes the resolved
-value into the importing module's own namespace the moment it's imported (including
-just pytest collecting a test file), permanently, for the life of the process, with
-no way to substitute different values afterward. See
-`tests/test_secrets_isolation.py` for the regression test and the real bug
-this guards against — a downstream consumer's "flaky" integration test turned out to
-be silently querying this real InfluxDB instead of its intended local Docker
-container, because of exactly this.
+`database_config`/`finnhub_config`/`oanda_config` all lazy-load these environment
+variables via a module-level `__getattr__` triggered on attribute access. Every
+module that needs them accesses it as `database_config.INFLUXDB_URL` (resolved
+fresh each call) rather than `from database_config import INFLUXDB_URL` — the
+latter freezes the resolved value into the importing module's own namespace the
+moment it's imported (including just pytest collecting a test file), permanently,
+for the life of the process, with no way to substitute different values
+afterward. See `tests/test_secrets_isolation.py` for the regression test and the
+real bug this guards against — a downstream consumer's "flaky" integration test
+turned out to be silently querying this real InfluxDB instead of its intended
+local Docker container, because of exactly this.
 
 ## Running
 
@@ -240,18 +242,14 @@ Single candlestick pair:
 
 ```python
 from forex.flows.candlestick_flow import candlestick_flow
-candlestick_flow(
-    config_file='/path/to/oanda_config.json',
-    instrument='EUR_USD',
-    granularity='H1',
-)
+candlestick_flow(instrument='EUR_USD', granularity='H1')
 ```
 
 All tracked instruments for one granularity:
 
 ```python
 from forex.flows.candlestick_flow import candlestick_batch_flow
-candlestick_batch_flow(config_file='/path/to/oanda_config.json', granularity='H1')
+candlestick_batch_flow(granularity='H1')
 ```
 
 Forward-fill gaps for one pair (fills gaps, tags each bar `is_forward_filled`, and
@@ -267,12 +265,12 @@ historical backfill):
 
 ```python
 from forex.flows.swap_rate_flow import swap_rate_flow
-swap_rate_flow(config_file='/path/to/oanda_config.json')
+swap_rate_flow()
 ```
 
-Economic calendar events for a rolling 14-day-ahead window (no `config_file` needed
-— this pulls from Finnhub, not Oanda). **Currently blocked** — see "Architecture"
-above; this will raise `403` on a free-tier Finnhub key:
+Economic calendar events for a rolling 14-day-ahead window (no Oanda credentials
+needed — this pulls from Finnhub, not Oanda). **Currently blocked** — see
+"Architecture" above; this will raise `403` on a free-tier Finnhub key:
 
 ```python
 from forex.flows.economic_calendar_flow import economic_calendar_flow
@@ -286,7 +284,7 @@ regardless of account:
 
 ```python
 from forex.flows.positioning_flow import positioning_flow
-positioning_flow(config_file='/path/to/oanda_config.json')
+positioning_flow()
 ```
 
 ### Option 2 — Scheduled deployment (all tracked instruments, four granularities)
@@ -297,10 +295,12 @@ Start a local Prefect server once (in its own terminal or as a service):
 prefect server start
 ```
 
-Then start the serve process, which registers and runs all nine deployments:
+Then start the serve process, which registers and runs all nine deployments
+(requires `OANDA_SERVER`/`OANDA_TOKEN`/`OANDA_DATE_TIME_FORMAT` and the InfluxDB
+env vars from "Prerequisites" above to already be set in the environment):
 
 ```
-OANDA_CONFIG_FILE=/path/to/oanda_config.json python -m forex.flows.serve
+python -m forex.flows.serve
 ```
 
 This registers nine deployments visible at http://localhost:4200 — one candlestick-fetch
@@ -357,7 +357,6 @@ To trigger a deployment run manually from the CLI:
 
 ```
 prefect deployment run 'forex-candlestick-batch/candlestick-H1' \
-  --param config_file=/path/to/oanda_config.json \
   --param granularity=H1
 ```
 
@@ -365,7 +364,6 @@ To run a single pair ad-hoc against a live Prefect server:
 
 ```
 prefect deployment run 'forex-candlestick-etl/forex-candlestick-etl' \
-  --param config_file=/path/to/oanda_config.json \
   --param instrument=EUR_USD \
   --param granularity=H1
 ```
@@ -377,7 +375,6 @@ To customise which instruments or add a new granularity, pass `instruments` when
 ```python
 from forex.flows.candlestick_flow import candlestick_batch_flow
 candlestick_batch_flow(
-    config_file='/path/to/oanda_config.json',
     granularity='M5',
     instruments=['EUR_USD', 'GBP_USD'],
 )

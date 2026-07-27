@@ -44,14 +44,17 @@ exact sequence on Python 3.11 and 3.12 for every push/PR.
 
 ## Conventions and gotchas
 
-- **Config modules lazy-load secrets.** `etl/config/database_config.py` and
-  `etl/config/finnhub_config.py` resolve environment variables via a
-  module-level `__getattr__`, only on attribute access. Always reference them
-  as `database_config.INFLUXDB_URL` (fresh resolution each time), **never**
-  `from database_config import INFLUXDB_URL` — the latter freezes the
-  resolved secret into the importing module's namespace at import time,
-  permanently, with no way to swap credentials later (including during
-  `pytest` collection). See `tests/test_secrets_isolation.py` for the
+- **Config modules lazy-load secrets.** `etl/config/database_config.py`,
+  `etl/config/finnhub_config.py`, and `oanda/config/oanda_config.py` all
+  resolve environment variables via a module-level `__getattr__`, only on
+  attribute access, and raise `AttributeError` (never a bare `KeyError`) for
+  an unset required var, so `hasattr()`/`getattr(x, name, default)`/pytest's
+  `monkeypatch.setattr(..., raising=False)` all still work correctly. Always
+  reference them as `database_config.INFLUXDB_URL` (fresh resolution each
+  time), **never** `from database_config import INFLUXDB_URL` — the latter
+  freezes the resolved value into the importing module's namespace at import
+  time, permanently, with no way to swap it later (including during `pytest`
+  collection). See `tests/test_secrets_isolation.py` for the
   regression test and the real incident this guards against.
 - **No external private-repo dependency.** `forex/util/` is a self-contained,
   in-house copy of the InfluxDB client, AWS secret loader, and time-unit

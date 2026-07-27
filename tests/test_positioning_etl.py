@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 
 from forex.etl.PositioningETL import PositioningETL, _records_from_book_response
+from forex.oanda.config import oanda_config
 
 _ORDER_BOOK_RESPONSE = {
     'orderBook': {
@@ -57,8 +58,7 @@ def test_records_from_book_response_handles_no_buckets():
 
 
 def test_compute_positioning_fetches_both_books_for_every_instrument(monkeypatch):
-    etl = PositioningETL(['EUR/USD', 'USD/JPY'], config_file='unused')
-    etl.config = {'server': 'https://example.test'}
+    etl = PositioningETL(['EUR/USD', 'USD/JPY'])
 
     calls = []
 
@@ -82,8 +82,8 @@ def test_compute_positioning_fetches_both_books_for_every_instrument(monkeypatch
 
 
 def test_get_order_book_and_position_book_build_the_expected_urls(monkeypatch):
-    etl = PositioningETL(['EUR/USD'], config_file='unused')
-    etl.config = {'server': 'https://example.test'}
+    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
+    etl = PositioningETL(['EUR/USD'])
 
     captured = {}
 
@@ -100,10 +100,11 @@ def test_get_order_book_and_position_book_build_the_expected_urls(monkeypatch):
     assert captured['url'] == 'https://example.test/v3/instruments/EUR_USD/positionBook'
 
 
-def test_fit_produces_valid_influxdb_dicts(monkeypatch, tmp_path):
-    config_file = tmp_path / 'oanda_config.json'
-    config_file.write_text('{"server": "https://example.test", "token": "fake", "oanda_date_time_format": "UNIX"}')
-    etl = PositioningETL(['EUR/USD'], config_file=str(config_file))
+def test_fit_produces_valid_influxdb_dicts(monkeypatch):
+    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_TOKEN', 'fake', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_DATE_TIME_FORMAT', 'UNIX', raising=False)
+    etl = PositioningETL(['EUR/USD'])
 
     monkeypatch.setattr(etl, 'get_order_book', lambda instrument: _ORDER_BOOK_RESPONSE)
     monkeypatch.setattr(etl, 'get_position_book', lambda instrument: _POSITION_BOOK_RESPONSE)

@@ -85,3 +85,26 @@ def test_candlestick_pipeline_default_bucket_is_not_a_frozen_default_value():
 
     signature = inspect.signature(CandlestickPipeline.__init__)
     assert signature.parameters["influxdb_bucket"].default is None
+
+
+def test_missing_env_var_raises_attribute_error_not_key_error(monkeypatch):
+    """The lazy __getattr__ pattern must raise AttributeError for an unset
+    required env var, never a bare KeyError -- Python's attribute protocol
+    (hasattr(), getattr(obj, name, default), unittest.mock/pytest's
+    monkeypatch.setattr) all rely on catching AttributeError specifically to
+    mean "not found"; a leaked KeyError breaks all of them silently instead of
+    behaving like a missing attribute."""
+    import pytest
+
+    from forex.etl.config import database_config
+    from forex.oanda.config import oanda_config
+
+    monkeypatch.delenv("INFLUXDB_URL", raising=False)
+    with pytest.raises(AttributeError):
+        database_config.INFLUXDB_URL
+    assert not hasattr(database_config, "INFLUXDB_URL")
+
+    monkeypatch.delenv("OANDA_SERVER", raising=False)
+    with pytest.raises(AttributeError):
+        oanda_config.OANDA_SERVER
+    assert not hasattr(oanda_config, "OANDA_SERVER")
