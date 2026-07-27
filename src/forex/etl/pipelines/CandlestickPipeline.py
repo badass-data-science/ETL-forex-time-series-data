@@ -16,7 +16,6 @@ class CandlestickPipeline:
 
     def __init__(
         self,
-        config_file: str,
         instrument: str,
         granularity: str,
         ifc,
@@ -25,7 +24,6 @@ class CandlestickPipeline:
         influxdb_bucket: str | None = None,
         run_test_query: bool = False,
     ) -> None:
-        self.config_file = config_file
         self.instrument = instrument
         self.granularity = granularity
         self.ifc = ifc
@@ -34,8 +32,8 @@ class CandlestickPipeline:
         self.ALLOWED_FIELDS = allowed_fields
         # database_config.INFLUXDB_BUCKET is resolved here, not as the parameter's
         # default value -- a default value is evaluated once at class-definition
-        # (i.e. import) time, which would trigger database_config's lazy AWS Secrets
-        # Manager load merely by importing this module, same bug class as importing
+        # (i.e. import) time, which would trigger database_config's lazy environment-
+        # variable read merely by importing this module, same bug class as importing
         # `from database_config import X` at module top level.
         self.INFLUXDB_BUCKET = influxdb_bucket if influxdb_bucket is not None else database_config.INFLUXDB_BUCKET
 
@@ -45,7 +43,7 @@ class CandlestickPipeline:
             logger.info('Market is closed — skipping run')
 
     def retrieve_candlestick_data(self) -> None:
-        self.cs = CandlestickETL(self.instrument, self.granularity, self.config_file, self.ifc)
+        self.cs = CandlestickETL(self.instrument, self.granularity, self.ifc)
         self.cs.fit()
 
     def qa(self, n: int = 3) -> None:

@@ -18,11 +18,12 @@ from forex.util.influxdb_tool import InfluxDbTool
 
 
 def _make_ifc() -> InfluxDbTool:
-    # database_config lazy-loads credentials via a module-level __getattr__ triggered
-    # on attribute access -- accessed here as database_config.X (not `from
-    # database_config import X` at module top level) so that merely importing this
-    # module (e.g. via pytest collecting an unrelated test file) never touches AWS
-    # Secrets Manager; only actually calling _make_ifc() does.
+    # database_config lazy-loads credentials from environment variables via a
+    # module-level __getattr__ triggered on attribute access -- accessed here as
+    # database_config.X (not `from database_config import X` at module top level)
+    # so that merely importing this module (e.g. via pytest collecting an unrelated
+    # test file) never requires the env vars to be set; only actually calling
+    # _make_ifc() does.
     return InfluxDbTool(database_config.INFLUXDB_URL, database_config.INFLUXDB_TOKEN, database_config.INFLUXDB_ORG)
 
 
@@ -35,10 +36,10 @@ def check_market_open_task() -> bool:
 
 
 @task(name='fetch-candlestick-data', retries=3, retry_delay_seconds=30)
-def fetch_candlestick_data(config_file: str, instrument: str, granularity: str) -> list[dict]:
+def fetch_candlestick_data(instrument: str, granularity: str) -> list[dict]:
     logger = get_run_logger()
     ifc = _make_ifc()
-    etl = CandlestickETL(instrument, granularity, config_file, ifc)
+    etl = CandlestickETL(instrument, granularity, ifc)
     etl.fit()
     logger.info('Fetched %d records for %s %s', len(etl.to_influx_list), instrument, granularity)
     return etl.to_influx_list
@@ -69,22 +70,21 @@ TRACKED_INSTRUMENTS: list[str] = [
 
 
 @flow(name='forex-candlestick-etl', log_prints=True)
-def candlestick_flow(config_file: str, instrument: str, granularity: str) -> None:
+def candlestick_flow(instrument: str, granularity: str) -> None:
     if not check_market_open_task():
         return
-    records = fetch_candlestick_data(config_file, instrument, granularity)
+    records = fetch_candlestick_data(instrument, granularity)
     insert_to_influxdb(records)
 
 
 @flow(name='forex-candlestick-batch', log_prints=True)
 def candlestick_batch_flow(
-    config_file: str,
     granularity: str,
     instruments: list[str] = TRACKED_INSTRUMENTS,
 ) -> None:
     """Run candlestick_flow for each instrument sequentially."""
     for instrument in instruments:
-        candlestick_flow(config_file=config_file, instrument=instrument, granularity=granularity)
+        candlestick_flow(instrument=instrument, granularity=granularity)
 
 
 if __name__ == '__main__':

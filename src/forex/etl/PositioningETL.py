@@ -1,11 +1,11 @@
 import datetime
-import json
 import logging
 
 import requests
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
 
 from forex.etl.models import PositioningBucketRecord
+from forex.oanda.config import oanda_config
 from forex.oanda.headers import get_oanda_headers
 
 logger = logging.getLogger(__name__)
@@ -42,14 +42,11 @@ class PositioningETL:
     instrument per book type, not a historical time series -- no backfill/
     windowing logic needed, same as SwapRateETL."""
 
-    def __init__(self, instruments: list[str], config_file: str) -> None:
+    def __init__(self, instruments: list[str]) -> None:
         self.instruments = [i.replace('/', '_') for i in instruments]
-        self.config_file = config_file
 
     def get_headers(self) -> None:
-        with open(self.config_file) as f:
-            self.config = json.load(f)
-        self.headers = get_oanda_headers(self.config)
+        self.headers = get_oanda_headers()
 
     @retry(
         stop=stop_after_attempt(5),
@@ -63,10 +60,10 @@ class PositioningETL:
         return r.json()
 
     def get_order_book(self, instrument: str) -> dict:
-        return self._fetch_from_api(self.config['server'] + '/v3/instruments/' + instrument + '/orderBook')
+        return self._fetch_from_api(oanda_config.OANDA_SERVER + '/v3/instruments/' + instrument + '/orderBook')
 
     def get_position_book(self, instrument: str) -> dict:
-        return self._fetch_from_api(self.config['server'] + '/v3/instruments/' + instrument + '/positionBook')
+        return self._fetch_from_api(oanda_config.OANDA_SERVER + '/v3/instruments/' + instrument + '/positionBook')
 
     def compute_positioning(self) -> None:
         self.records: list[dict] = []

@@ -1,16 +1,11 @@
-import json
-import functools
+import os
 
-from forex.util.secrets_manager import get_secret
-
-_SECRET_NAME = 'Forex/FinnhubApiKey'
 _KEYS = frozenset(['FINNHUB_API_KEY'])
-
-@functools.lru_cache(maxsize=None)
-def _load_secret():
-    return json.loads(get_secret(_SECRET_NAME))
 
 def __getattr__(name):
     if name in _KEYS:
-        return _load_secret()[name]
+        try:
+            return os.environ[name]
+        except KeyError:
+            raise AttributeError(f"environment variable {name!r} is not set") from None
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -24,9 +24,9 @@ def _make_ifc() -> InfluxDbTool:
 
 
 @task(name='fetch-swap-rates', retries=3, retry_delay_seconds=30)
-def fetch_swap_rates(config_file: str, instruments: list[str]) -> list[dict]:
+def fetch_swap_rates(instruments: list[str]) -> list[dict]:
     logger = get_run_logger()
-    etl = SwapRateETL(instruments, config_file)
+    etl = SwapRateETL(instruments)
     etl.fit()
     logger.info('Fetched swap rates for %d instruments', len(etl.to_influx_list))
     return etl.to_influx_list
@@ -44,11 +44,11 @@ def insert_swap_rates_to_influxdb(records: list[dict]) -> None:
 
 
 @flow(name='forex-swap-rate-etl', log_prints=True)
-def swap_rate_flow(config_file: str, instruments: list[str] = TRACKED_INSTRUMENTS) -> None:
+def swap_rate_flow(instruments: list[str] = TRACKED_INSTRUMENTS) -> None:
     """No market-hours gate (unlike candlestick_flow) -- financing rates are an
     account-level daily snapshot, not tied to candle formation, and OANDA continues
     to serve this endpoint outside trading hours."""
-    records = fetch_swap_rates(config_file, instruments)
+    records = fetch_swap_rates(instruments)
     insert_swap_rates_to_influxdb(records)
 
 

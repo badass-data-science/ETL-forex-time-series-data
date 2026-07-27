@@ -2,7 +2,11 @@
 Start all scheduled forex deployments.
 
 Usage:
-    OANDA_CONFIG_FILE=/path/to/oanda_config.json python -m forex.flows.serve
+    python -m forex.flows.serve
+
+Requires OANDA_SERVER, OANDA_TOKEN, and OANDA_DATE_TIME_FORMAT (plus the InfluxDB
+env vars database_config reads) to be set in the environment -- see README.md's
+"Prerequisites" section.
 
 Deployments
 -----------
@@ -46,35 +50,28 @@ remains available outside forex trading hours (OANDA just won't have
 refreshed recently).
 """
 
-import os
-import sys
-
 from prefect import serve
 
 from forex.flows.candlestick_flow import candlestick_batch_flow
 from forex.flows.forward_fill_flow import forward_fill_batch_flow
 from forex.flows.swap_rate_flow import swap_rate_flow
 
-_config_file = os.environ.get('OANDA_CONFIG_FILE', '')
-if not _config_file:
-    sys.exit('OANDA_CONFIG_FILE environment variable must be set to the path of your Oanda config JSON.')
-
 daily = candlestick_batch_flow.to_deployment(
     name='candlestick-D',
     cron='5 0 * * *',       # 00:05 UTC — well after the 17:00 ET daily candle close
-    parameters={'config_file': _config_file, 'granularity': 'D'},
+    parameters={'granularity': 'D'},
 )
 
 hourly = candlestick_batch_flow.to_deployment(
     name='candlestick-H1',
     cron='5 * * * *',       # 5 min past each hour — gives H1 candle time to close
-    parameters={'config_file': _config_file, 'granularity': 'H1'},
+    parameters={'granularity': 'H1'},
 )
 
 quarter_hourly = candlestick_batch_flow.to_deployment(
     name='candlestick-M15',
     cron='2,17,32,47 * * * *',  # 2 min into each 15-min window
-    parameters={'config_file': _config_file, 'granularity': 'M15'},
+    parameters={'granularity': 'M15'},
 )
 
 four_hourly = candlestick_batch_flow.to_deployment(
@@ -87,7 +84,7 @@ four_hourly = candlestick_batch_flow.to_deployment(
     # closes is harmless (finds nothing new) rather than risking a guessed-wrong
     # offset silently missing candles for hours.
     cron='20 * * * *',
-    parameters={'config_file': _config_file, 'granularity': 'H4'},
+    parameters={'granularity': 'H4'},
 )
 
 forward_fill_daily = forward_fill_batch_flow.to_deployment(
@@ -117,7 +114,6 @@ forward_fill_four_hourly = forward_fill_batch_flow.to_deployment(
 swap_rates_daily = swap_rate_flow.to_deployment(
     name='swap-rate-D',
     cron='45 20 * * *',    # ~15 min before the 5pm NY rollover cutoff (fixed UTC, not DST-aware)
-    parameters={'config_file': _config_file},
 )
 
 if __name__ == '__main__':

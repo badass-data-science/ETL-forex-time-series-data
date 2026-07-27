@@ -1,17 +1,17 @@
-"""Regression test for a real bug: importing these modules must never trigger AWS
-Secrets Manager resolution on its own -- only actually calling a function that needs
-a live connection should.
+"""Regression test for a real bug: importing these modules must never require the
+credential environment variables to be set -- only actually calling a function that
+needs a live connection should.
 
-database_config lazy-loads credentials via a module-level __getattr__ triggered on
-attribute access. `from database_config import INFLUXDB_URL` at another module's top
-level fires that trigger immediately, at IMPORT time, binding the resolved secret
-into that module's namespace once, permanently, for the life of the process --
-merely importing (or collecting, via pytest) any of these modules used to be enough
-to eagerly resolve real credentials, and no later test monkeypatch of
-database_config.get_secret could undo an already-executed import. Discovered via a
-downstream consumer (forex-ML) whose "flaky" integration test turned out to be
-silently querying a real production InfluxDB instead of its intended local Docker
-container, because this eager import had already frozen the real credentials.
+database_config lazy-loads credentials from environment variables via a module-level
+__getattr__ triggered on attribute access. `from database_config import INFLUXDB_URL`
+at another module's top level fires that trigger immediately, at IMPORT time, binding
+the resolved value into that module's namespace once, permanently, for the life of
+the process -- merely importing (or collecting, via pytest) any of these modules used
+to be enough to eagerly resolve real credentials, and no later test monkeypatch of
+os.environ could undo an already-executed import. Discovered via a downstream
+consumer (forex-ML) whose "flaky" integration test turned out to be silently querying
+a real production InfluxDB instead of its intended local Docker container, because
+this eager import had already frozen the real credentials.
 
 The fix: reference database_config as a module and resolve attributes fresh at the
 point of use, rather than importing the values themselves (or using them as
@@ -85,3 +85,26 @@ def test_candlestick_pipeline_default_bucket_is_not_a_frozen_default_value():
 
     signature = inspect.signature(CandlestickPipeline.__init__)
     assert signature.parameters["influxdb_bucket"].default is None
+
+
+def test_missing_env_var_raises_attribute_error_not_key_error(monkeypatch):
+    """The lazy __getattr__ pattern must raise AttributeError for an unset
+    required env var, never a bare KeyError -- Python's attribute protocol
+    (hasattr(), getattr(obj, name, default), unittest.mock/pytest's
+    monkeypatch.setattr) all rely on catching AttributeError specifically to
+    mean "not found"; a leaked KeyError breaks all of them silently instead of
+    behaving like a missing attribute."""
+    import pytest
+
+    from forex.etl.config import database_config
+    from forex.oanda.config import oanda_config
+
+    monkeypatch.delenv("INFLUXDB_URL", raising=False)
+    with pytest.raises(AttributeError):
+        database_config.INFLUXDB_URL
+    assert not hasattr(database_config, "INFLUXDB_URL")
+
+    monkeypatch.delenv("OANDA_SERVER", raising=False)
+    with pytest.raises(AttributeError):
+        oanda_config.OANDA_SERVER
+    assert not hasattr(oanda_config, "OANDA_SERVER")

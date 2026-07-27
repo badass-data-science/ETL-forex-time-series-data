@@ -25,9 +25,9 @@ def _make_ifc() -> InfluxDbTool:
 
 
 @task(name='fetch-positioning', retries=3, retry_delay_seconds=30)
-def fetch_positioning(config_file: str, instruments: list[str]) -> list[dict]:
+def fetch_positioning(instruments: list[str]) -> list[dict]:
     logger = get_run_logger()
-    etl = PositioningETL(instruments, config_file)
+    etl = PositioningETL(instruments)
     etl.fit()
     logger.info('Fetched %d positioning buckets', len(etl.to_influx_list))
     return etl.to_influx_list
@@ -47,11 +47,11 @@ def insert_positioning_to_influxdb(records: list[dict]) -> None:
 
 
 @flow(name='forex-positioning-etl', log_prints=True)
-def positioning_flow(config_file: str, instruments: list[str] = TRACKED_INSTRUMENTS) -> None:
+def positioning_flow(instruments: list[str] = TRACKED_INSTRUMENTS) -> None:
     """No market-hours gate -- OANDA continues to serve its most recent order-book/
     position-book snapshot even outside trading hours (it just won't have updated
     recently)."""
-    records = fetch_positioning(config_file, instruments)
+    records = fetch_positioning(instruments)
     insert_positioning_to_influxdb(records)
 
 

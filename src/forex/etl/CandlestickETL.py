@@ -1,5 +1,4 @@
 import datetime
-import json
 import logging
 from zoneinfo import ZoneInfo
 
@@ -9,6 +8,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fi
 
 from forex.etl.config import database_config
 from forex.etl.models import CandlestickRecord
+from forex.oanda.config import oanda_config
 from forex.oanda.config.price_type_map import price_type_map
 from forex.oanda.headers import get_oanda_headers
 
@@ -23,7 +23,6 @@ class CandlestickETL:
         self,
         instrument: str,
         granularity: str,
-        config_file: str,
         ifc,
         measurement_name: str = CandlestickRecord.MEASUREMENT,
         error_retry_interval: int = 2,
@@ -32,7 +31,6 @@ class CandlestickETL:
         count: int = 5000,
         price_types: str = 'BA',
     ) -> None:
-        self.config_file = config_file
         self.instrument = instrument.replace('/', '_')
         self.granularity = granularity
         self.ifc = ifc
@@ -51,9 +49,7 @@ class CandlestickETL:
         self.end_date_original = int(datetime.datetime.now(tz=self.timezone).timestamp())
 
     def get_headers(self) -> None:
-        with open(self.config_file) as f:
-            self.config = json.load(f)
-        self.headers = get_oanda_headers(self.config)
+        self.headers = get_oanda_headers()
 
     def get_max_previous_time(self) -> None:
         instrument_str = self.instrument.replace('_', '/')
@@ -89,7 +85,7 @@ class CandlestickETL:
 
     def get_instrument_candlesticks(self, end_date: float) -> dict:
         url = (
-            self.config['server']
+            oanda_config.OANDA_SERVER
             + '/v3/instruments/' + self.instrument
             + '/candles?count=' + str(self.count)
             + '&price=' + self.price_types
