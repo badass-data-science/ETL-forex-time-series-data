@@ -19,7 +19,7 @@ src/forex/       # the installable package (import as `forex.*`)
 ├── flows/       # Prefect flow wrappers around etl/
 ├── oanda/       # Oanda API auth/config helpers
 ├── eda/         # exploratory-analysis config constants
-└── util/        # in-house InfluxDB client, AWS secret loader, time constants
+└── util/        # in-house InfluxDB client, time constants
                  # (no external private-repo dependency — see below)
 tests/           # pytest, no network/AWS/InfluxDB required to run
 pyproject.toml   # single source of truth for version + dependencies
@@ -123,6 +123,16 @@ that *are* unit tested (all the ETL classes, `models.py`, `InfluxDbTool`,
   forward-filled bar has zero return/volatility by construction. Don't strip
   this tag or treat forward-filled bars as equivalent to real data anywhere
   downstream.
+- **Every Pydantic record model subclasses `MeasurementRecord`**
+  (`etl/models.py`) for `to_influx_dict()`. Adding a new measurement means
+  declaring `TAGS`/`MEASUREMENT`/`FIELDS` on a `MeasurementRecord` subclass,
+  not hand-writing another tag/field/time split — that duplication existed
+  identically across all 5 models before it was consolidated.
+- **`forex.flows._common.make_ifc()` is the one place `InfluxDbTool` gets
+  constructed from `database_config`.** Every flow module imports it rather
+  than redefining its own `_make_ifc()` — that was duplicated 5x before
+  consolidation. Add new flows by importing `make_ifc`, not by copy-pasting
+  the helper again.
 - **`graphify-out/` holds a knowledge graph of this codebase**
   ([graphify](https://github.com/safishamsi/graphify)). Only `graph.json`,
   `graph.html`, and `GRAPH_REPORT.md` are tracked (see `.gitignore`) —

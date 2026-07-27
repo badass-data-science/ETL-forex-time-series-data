@@ -170,6 +170,7 @@ src/forex/
 │       ├── CandlestickPipeline.py
 │       └── ForwardFillInator.py
 ├── flows/
+│   ├── _common.py                # make_ifc() -- shared by every flow below
 │   ├── candlestick_flow.py       # Prefect: fetch → InfluxDB (single pair + batch)
 │   ├── forward_fill_flow.py      # Prefect: forward-fill gaps
 │   ├── swap_rate_flow.py         # Prefect: fetch swap rates → InfluxDB
@@ -188,10 +189,12 @@ src/forex/
 tests/
 ├── test_critical_timezone.py
 ├── test_models.py
+├── test_candlestick_etl.py
 ├── test_forward_fill_inator.py
 ├── test_swap_rate_etl.py
 ├── test_economic_calendar_etl.py
 ├── test_positioning_etl.py
+├── test_influxdb_tool.py
 └── test_secrets_isolation.py
 
 graphify-out/          # knowledge graph of this codebase (tracked subset)
@@ -388,6 +391,10 @@ Or modify `TRACKED_INSTRUMENTS` in `src/forex/flows/candlestick_flow.py` and res
 
 ## Data model
 
+All five records below subclass `MeasurementRecord` (`src/forex/etl/models.py`),
+which implements `to_influx_dict()` once from each subclass's `TAGS`/`MEASUREMENT`/
+`FIELDS` — no per-model reimplementation of the tag/field/time split.
+
 `CandlestickRecord` (`src/forex/etl/models.py`) is the single source of truth for the candlestick schema:
 
 | Attribute | Purpose |
@@ -468,9 +475,10 @@ measurement in this pipeline.
 ## Tests
 
 ```
-pytest        # test_critical_timezone.py + test_models.py + test_forward_fill_inator.py
-              # + test_swap_rate_etl.py + test_economic_calendar_etl.py
-              # + test_positioning_etl.py + test_secrets_isolation.py
+pytest        # test_critical_timezone.py + test_models.py + test_candlestick_etl.py
+              # + test_forward_fill_inator.py + test_swap_rate_etl.py
+              # + test_economic_calendar_etl.py + test_positioning_etl.py
+              # + test_influxdb_tool.py + test_secrets_isolation.py
 pytest -v     # verbose output (configured in pyproject.toml)
 ```
 
