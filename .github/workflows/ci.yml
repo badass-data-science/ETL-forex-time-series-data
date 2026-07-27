@@ -13,26 +13,18 @@ jobs:
         python-version: ["3.11", "3.12"]
 
     steps:
-      # Checked out as "forex" (not the repo's own directory name) because
-      # every module in this repo imports itself as the top-level package
-      # `forex` (e.g. `from forex.etl.models import ...`). Putting the
-      # checkout's parent directory on PYTHONPATH is what makes that resolve.
       - uses: actions/checkout@v4
-        with:
-          path: forex
 
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install dependencies
-        run: pip install -r forex/requirements-dev.txt
+      - name: Install package + dev dependencies
+        run: pip install -e ".[dev]"
 
       - name: Run tests
         env:
-          # github.workspace -> `import forex...` resolves to this checkout.
-          # forex/ci/vendor   -> `import python_tools_and_shortcuts...` resolves
-          #                      to the CI-only vendored copy (see ci/vendor/README.md);
-          #                      not needed/used outside of CI.
-          PYTHONPATH: ${{ github.workspace }}:${{ github.workspace }}/forex/ci/vendor
-        run: pytest forex/tests -v
+          # `import python_tools_and_shortcuts...` resolves to a CI-only vendored
+          # copy (see ci/vendor/README.md) -- not needed/used outside of CI.
+          PYTHONPATH: ${{ github.workspace }}/ci/vendor
+        run: pytest tests -v

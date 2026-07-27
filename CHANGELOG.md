@@ -8,6 +8,22 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Changed
+- Reorganized the package into a PyPI-publication-friendly `src/forex/` layout
+  (was `etl/`, `flows/`, `oanda/`, `eda/`, `critical_timezone.py` at the repo
+  root), with `__init__.py` added to every package directory.
+- `pyproject.toml` now declares a full build (`hatchling`, wheel packaging,
+  license, classifiers, project URLs); the package installs and builds as a
+  real wheel (`pip install -e ".[dev]"`, `python -m build`).
+- CI installs the package itself (`pip install -e ".[dev]"`) instead of a
+  separate requirements file, and no longer needs the "checkout to a `forex/`
+  directory" workaround now that the package is genuinely importable once
+  installed.
+
+### Removed
+- `requirements.txt` / `requirements-dev.txt`, superseded by
+  `pyproject.toml`'s `dependencies` / `optional-dependencies.dev`.
+
 ## [0.0.1]
 
 ### Added

@@ -1,7 +1,7 @@
 # Vendored dependency (CI only)
 
 This tree is a copy of the three `python_tools_and_shortcuts` modules that
-`etl/`, `flows/`, and `eda/` import at module scope
+`src/forex/etl/`, `src/forex/flows/`, and `src/forex/eda/` import at module scope
 (`aws.secrets_manager.get_secret`, `databases.influxdb.InfluxDbTool`,
 `time_series_essentials.time_conversions`). That package lives in the
 private `badass-data-science/python-tools-and-shortcuts` repo and isn't

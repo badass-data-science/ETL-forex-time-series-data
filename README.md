@@ -137,12 +137,12 @@ with a $22,000/year minimum. Abandoned for now on cost, same as the economic
 calendar above — the code is otherwise complete, but there's no plan-upgrade path
 here, only a fundamentally different (and expensive) product.
 
-Every pipeline is wrapped as a **Prefect flow** (`flows/`) for scheduling and observability.
+Every pipeline is wrapped as a **Prefect flow** (`src/forex/flows/`) for scheduling and observability.
 
 ## Project layout
 
 ```
-forex/
+src/forex/
 ├── critical_timezone.py          # market-hours gate (Toronto tz)
 ├── etl/
 │   ├── CandlestickETL.py         # API fetch + transform
@@ -165,23 +165,23 @@ forex/
 │   ├── economic_calendar_flow.py # Prefect: fetch calendar events → InfluxDB
 │   ├── positioning_flow.py       # Prefect: fetch order/position book → InfluxDB
 │   └── serve.py                  # scheduled deployments for all tracked instruments
-├── oanda/
-│   ├── headers.py                # builds Oanda auth headers
-│   └── config/price_type_map.py  # bid/ask/mid label mapping
-└── tests/
-    ├── test_critical_timezone.py
-    ├── test_models.py
-    ├── test_forward_fill_inator.py
-    ├── test_swap_rate_etl.py
-    ├── test_economic_calendar_etl.py
-    ├── test_positioning_etl.py
-    └── test_secrets_isolation.py
+└── oanda/
+    ├── headers.py                # builds Oanda auth headers
+    └── config/price_type_map.py  # bid/ask/mid label mapping
+
+tests/
+├── test_critical_timezone.py
+├── test_models.py
+├── test_forward_fill_inator.py
+├── test_swap_rate_etl.py
+├── test_economic_calendar_etl.py
+├── test_positioning_etl.py
+└── test_secrets_isolation.py
 ```
 
 ## Prerequisites
 
 ```
-cd Data-Science/Data-Engineering/ETL
 pip install -e ".[dev]"          # installs prefect, pydantic, tenacity, etc.
 ```
 
@@ -363,11 +363,11 @@ candlestick_batch_flow(
 )
 ```
 
-Or modify `TRACKED_INSTRUMENTS` in `flows/candlestick_flow.py` and restart `serve.py`.
+Or modify `TRACKED_INSTRUMENTS` in `src/forex/flows/candlestick_flow.py` and restart `serve.py`.
 
 ## Data model
 
-`CandlestickRecord` (`etl/models.py`) is the single source of truth for the candlestick schema:
+`CandlestickRecord` (`src/forex/etl/models.py`) is the single source of truth for the candlestick schema:
 
 | Attribute | Purpose |
 |---|---|
@@ -378,7 +378,7 @@ Or modify `TRACKED_INSTRUMENTS` in `flows/candlestick_flow.py` and restart `serv
 
 Pydantic enforces types on ingestion; `to_influx_dict()` produces the InfluxDB write payload.
 
-`ForwardFilledCandlestickRecord` (`etl/models.py`) is the schema for the forward-filled output:
+`ForwardFilledCandlestickRecord` (`src/forex/etl/models.py`) is the schema for the forward-filled output:
 
 | Attribute | Purpose |
 |---|---|
@@ -393,7 +393,7 @@ candle at that point, `False` otherwise. It survives the subsequent forward-fill
 step untouched (`ffill()` only fills genuine `NaN`s in the OHLCV columns; this field
 is never null to begin with).
 
-`SwapRateRecord` (`etl/models.py`) is the schema for per-instrument financing rates:
+`SwapRateRecord` (`src/forex/etl/models.py`) is the schema for per-instrument financing rates:
 
 | Attribute | Purpose |
 |---|---|
@@ -408,7 +408,7 @@ an account-level daily snapshot per instrument, not tied to any candle timeframe
 `-0.0067` for the long side), charged (or credited, if positive) once per day a
 position is held past the 5pm New York rollover cutoff.
 
-`EconomicCalendarEventRecord` (`etl/models.py`) is the schema for scheduled
+`EconomicCalendarEventRecord` (`src/forex/etl/models.py`) is the schema for scheduled
 economic release events (Finnhub, not Oanda):
 
 | Attribute | Purpose |
@@ -426,7 +426,7 @@ event has no `actual` yet (and possibly no `estimate` either), so `to_influx_dic
 omits any `None` field entirely rather than writing it as null — the one place this
 schema's serialization differs from the other three records above.
 
-`PositioningBucketRecord` (`etl/models.py`) is the schema for one price bucket of
+`PositioningBucketRecord` (`src/forex/etl/models.py`) is the schema for one price bucket of
 an order-book or position-book snapshot:
 
 | Attribute | Purpose |
@@ -447,7 +447,6 @@ measurement in this pipeline.
 ## Tests
 
 ```
-cd Data-Science/Data-Engineering/ETL
 pytest        # test_critical_timezone.py + test_models.py + test_forward_fill_inator.py
               # + test_swap_rate_etl.py + test_economic_calendar_etl.py
               # + test_positioning_etl.py + test_secrets_isolation.py
