@@ -9,11 +9,11 @@ All major pairs on a schedule:
     python -m forex.flows.serve
 """
 
-from prefect import flow, task, get_run_logger
+from prefect import flow, get_run_logger, task
 
-from forex.etl.PositioningETL import PositioningETL
 from forex.etl.config import database_config
 from forex.etl.models import PositioningBucketRecord
+from forex.etl.PositioningETL import PositioningETL
 from forex.flows.candlestick_flow import TRACKED_INSTRUMENTS
 from forex.util.influxdb_tool import InfluxDbTool
 

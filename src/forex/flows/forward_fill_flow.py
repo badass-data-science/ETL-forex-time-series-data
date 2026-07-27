@@ -10,7 +10,7 @@ Run ad-hoc:
         --param granularity=H1
 """
 
-from prefect import flow, task, get_run_logger
+from prefect import flow, get_run_logger, task
 
 from forex.etl.config import database_config
 from forex.etl.models import ForwardFilledCandlestickRecord

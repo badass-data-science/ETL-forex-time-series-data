@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
 
 class CandlestickETL:
 
-    TIMEZONE_NAME = 'America/Toronto'  # canonical timezone for this pipeline; must match critical_timezone.py and ForwardFillInator
+    # canonical timezone for this pipeline; must match critical_timezone.py and ForwardFillInator
+    TIMEZONE_NAME = 'America/Toronto'
 
     def __init__(
         self,
@@ -149,7 +150,7 @@ class CandlestickETL:
         rename_map = {
             f'{pt}_{old}': f'{pt}_{new}'
             for pt in self.price_type_list
-            for old, new in zip(['o', 'l', 'h', 'c'], ['open', 'low', 'high', 'close'])
+            for old, new in zip(['o', 'l', 'h', 'c'], ['open', 'low', 'high', 'close'], strict=True)
         }
         self.df.rename(columns=rename_map, inplace=True)
         self.df.drop(columns=['time_iso'], inplace=True)

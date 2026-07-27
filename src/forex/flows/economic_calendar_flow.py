@@ -10,10 +10,10 @@ All scheduled on a cron:
 
 import datetime
 
-from prefect import flow, task, get_run_logger
+from prefect import flow, get_run_logger, task
 
-from forex.etl.EconomicCalendarETL import EconomicCalendarETL
 from forex.etl.config import database_config, finnhub_config
+from forex.etl.EconomicCalendarETL import EconomicCalendarETL
 from forex.etl.models import EconomicCalendarEventRecord
 from forex.util.influxdb_tool import InfluxDbTool
 

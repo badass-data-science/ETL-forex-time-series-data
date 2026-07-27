@@ -117,8 +117,11 @@ swap_rates_daily = swap_rate_flow.to_deployment(
 )
 
 if __name__ == '__main__':
+    # to_deployment() is typed as returning RunnerDeployment | Coroutine[...] because
+    # Prefect overloads it for both sync and async flows; called synchronously here
+    # (as in every Prefect example), it's always a RunnerDeployment.
     serve(
-        daily, hourly, four_hourly, quarter_hourly,
-        forward_fill_daily, forward_fill_hourly, forward_fill_four_hourly, forward_fill_quarter_hourly,
-        swap_rates_daily,
+        daily, hourly, four_hourly, quarter_hourly,  # type: ignore[arg-type]
+        forward_fill_daily, forward_fill_hourly, forward_fill_four_hourly, forward_fill_quarter_hourly,  # type: ignore[arg-type]
+        swap_rates_daily,  # type: ignore[arg-type]
     )

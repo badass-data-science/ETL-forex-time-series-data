@@ -19,7 +19,7 @@ def _records_from_book_response(rj: dict, response_key: str, book_type: str) -> 
     bucket."""
     book = rj[response_key]
     instrument = book['instrument'].replace('_', '/')
-    time_dt = datetime.datetime.strptime(book['time'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)
+    time_dt = datetime.datetime.strptime(book['time'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.UTC)
     timestamp = int(time_dt.timestamp())
 
     return [

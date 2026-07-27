@@ -26,7 +26,7 @@ def test_records_from_calendar_response_parses_a_future_event_with_no_actual_yet
     assert r['estimate'] == 200000
     assert r['prev'] == 199000
     assert r['unit'] == 'K'
-    expected_ts = int(datetime.datetime(2024, 1, 5, 13, 30, 0, tzinfo=datetime.timezone.utc).timestamp())
+    expected_ts = int(datetime.datetime(2024, 1, 5, 13, 30, 0, tzinfo=datetime.UTC).timestamp())
     assert r['timestamp'] == expected_ts
 
 

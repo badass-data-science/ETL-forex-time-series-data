@@ -1,13 +1,10 @@
 import pandas as pd
-
-from influxdb_client import InfluxDBClient
-from influxdb_client import PostBucketRequest
-from influxdb_client.rest import ApiException
-from influxdb_client import Point
-from influxdb_client import WritePrecision
+from influxdb_client import InfluxDBClient, Point, PostBucketRequest, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
+from influxdb_client.rest import ApiException
 
-class InfluxDbTool():
+
+class InfluxDbTool:
 
     #
     # constructor
@@ -22,7 +19,9 @@ class InfluxDbTool():
         self.INFLUXDB_URL = INFLUXDB_URL
         self.INFLUXDB_TOKEN = INFLUXDB_TOKEN
         self.INFLUXDB_ORG = INFLUXDB_ORG
-        self.client = InfluxDBClient(url=self.INFLUXDB_URL, token=self.INFLUXDB_TOKEN, org=self.INFLUXDB_ORG, timeout = timeout)
+        self.client = InfluxDBClient(
+            url=self.INFLUXDB_URL, token=self.INFLUXDB_TOKEN, org=self.INFLUXDB_ORG, timeout=timeout,
+        )
 
     #
     # deconstructor
@@ -113,7 +112,7 @@ class InfluxDbTool():
             df['unix_epoch_s'] = InfluxDbTool._time_column_to_unix_epoch_s(df['_time'])
             df.drop(columns = ['_time'], inplace = True)
             column_list = ['unix_epoch_s']
-            column_list.extend([x for x in df.columns if not x == 'unix_epoch_s'])
+            column_list.extend([x for x in df.columns if x != 'unix_epoch_s'])
             df = df[column_list]
 
         return df

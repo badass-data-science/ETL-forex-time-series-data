@@ -19,7 +19,7 @@ class CandlestickPipeline:
         instrument: str,
         granularity: str,
         ifc,
-        allowed_tags: set = CandlestickRecord.TAGS,
+        allowed_tags: frozenset[str] = CandlestickRecord.TAGS,
         allowed_fields: dict = CandlestickRecord.FIELDS,
         influxdb_bucket: str | None = None,
         run_test_query: bool = False,

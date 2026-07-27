@@ -1,9 +1,7 @@
 import datetime
-from forex.critical_timezone import critical_timezone
 
-from forex.util.time_conversions import seconds_in_one_hour
-from forex.util.time_conversions import seconds_in_one_day
-from forex.util.time_conversions import seconds_in_one_week
+from forex.critical_timezone import critical_timezone
+from forex.util.time_conversions import seconds_in_one_day, seconds_in_one_hour, seconds_in_one_week
 
 cutoff_timestamp = datetime.datetime(2015, 1, 1, 0, 0, 0, tzinfo = critical_timezone).timestamp()
 

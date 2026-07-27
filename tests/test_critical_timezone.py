@@ -1,6 +1,4 @@
 import datetime
-
-import pytest
 from zoneinfo import ZoneInfo
 
 from forex.critical_timezone import critical_timezone, is_market_open_at_time

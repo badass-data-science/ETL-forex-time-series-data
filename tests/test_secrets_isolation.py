@@ -101,10 +101,10 @@ def test_missing_env_var_raises_attribute_error_not_key_error(monkeypatch):
 
     monkeypatch.delenv("INFLUXDB_URL", raising=False)
     with pytest.raises(AttributeError):
-        database_config.INFLUXDB_URL
+        _ = database_config.INFLUXDB_URL
     assert not hasattr(database_config, "INFLUXDB_URL")
 
     monkeypatch.delenv("OANDA_SERVER", raising=False)
     with pytest.raises(AttributeError):
-        oanda_config.OANDA_SERVER
+        _ = oanda_config.OANDA_SERVER
     assert not hasattr(oanda_config, "OANDA_SERVER")

@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from forex.critical_timezone import is_market_open_at_time
 from forex.eda.eda_config.eda_config import granularity_to_seconds_map
 from forex.etl.models import ForwardFilledCandlestickRecord
 
@@ -133,7 +132,9 @@ class ForwardFillInator:
         # guess (real candles, if they exist at that instant, are matched by
         # exact unix_epoch_s value regardless, since real timestamps are never
         # ambiguous -- they're already resolved to one true instant).
-        local_grid = local_grid_naive.tz_localize(self.critical_timezone_str, nonexistent='shift_forward', ambiguous='NaT')
+        local_grid = local_grid_naive.tz_localize(
+            self.critical_timezone_str, nonexistent='shift_forward', ambiguous='NaT',
+        )
         local_grid = local_grid[~local_grid.isna()]
         epoch_seconds = (local_grid.tz_convert('UTC') - pd.Timestamp('1970-01-01', tz='UTC')) // pd.Timedelta(seconds=1)
         return epoch_seconds.to_numpy(dtype='int64')
@@ -261,7 +262,7 @@ class ForwardFillInator:
         y = np.int8((~self.df_all_time_diff_market_open['volume'].isna()).values)
         plt.figure(figsize=[10, 3])
         plt.plot(x, y, '.', color='magenta')
-        plt.yticks([0, 1], [True, False])
+        plt.yticks([0, 1], ['True', 'False'])
         plt.ylim([-0.4, 1.4])
         plt.ylabel('NaN')
         plt.title('Is data point NaN?')

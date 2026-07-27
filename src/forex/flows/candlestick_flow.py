@@ -8,7 +8,7 @@ All tracked instruments on a schedule:
     python -m forex.flows.serve
 """
 
-from prefect import flow, task, get_run_logger
+from prefect import flow, get_run_logger, task
 
 from forex.critical_timezone import is_market_open
 from forex.etl.CandlestickETL import CandlestickETL
@@ -52,7 +52,9 @@ def insert_to_influxdb(records: list[dict]) -> None:
         logger.info('No new records to insert')
         return
     ifc = _make_ifc()
-    ifc.insert_dictionary_list(records, CandlestickRecord.TAGS, CandlestickRecord.FIELDS, database_config.INFLUXDB_BUCKET)
+    ifc.insert_dictionary_list(
+        records, CandlestickRecord.TAGS, CandlestickRecord.FIELDS, database_config.INFLUXDB_BUCKET,
+    )
     logger.info('Inserted %d records', len(records))
 
 

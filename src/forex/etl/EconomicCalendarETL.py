@@ -20,7 +20,7 @@ def _records_from_calendar_response(rj: dict) -> list[dict]:
     local/system timezone."""
     records = []
     for entry in rj.get('economicCalendar', []):
-        time_dt = datetime.datetime.strptime(entry['time'], '%Y-%m-%d %H:%M:%S').replace(tzinfo=datetime.timezone.utc)
+        time_dt = datetime.datetime.strptime(entry['time'], '%Y-%m-%d %H:%M:%S').replace(tzinfo=datetime.UTC)
         records.append({
             'event': entry['event'],
             'country': entry['country'],

@@ -472,6 +472,14 @@ pytest -v     # verbose output (configured in pyproject.toml)
 
 No external dependencies — no Oanda, no InfluxDB, no AWS required to run the test suite.
 
+Linting (`ruff`) and type checking (`mypy`) are configured in `pyproject.toml`
+and run in CI as a separate job (`.github/workflows/ci.yml`):
+
+```
+ruff check src tests
+mypy src/forex
+```
+
 `test_forward_fill_inator.py` covers the `is_forward_filled` flag, the actual
 forward-fill propagation, and the InfluxDB record schema. It's also the regression
 test for a real bug: `account_for_holiday_market_closure()` used to run *before*

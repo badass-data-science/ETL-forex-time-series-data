@@ -8,6 +8,20 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Added
+- Linting (`ruff`) and type checking (`mypy`), configured in `pyproject.toml`
+  and run in CI as a separate `lint` job. `ruff`'s line length is set to 120
+  (not the default 88) to match this codebase's deliberately dense
+  comments/docstrings, and `SIM103` is disabled where it would hurt
+  readability (see `critical_timezone.py`'s guard clauses).
+
+### Fixed
+- A handful of real issues `ruff`/`mypy` surfaced: two dead imports
+  (`is_market_open_at_time` in `ForwardFillInator.py`, `pytest` in
+  `test_critical_timezone.py`), a `zip()` without `strict=`, an imprecise
+  `frozenset[str]`-vs-`set` type hint on `CandlestickPipeline.__init__`, and
+  a `plt.yticks` call passing `bool` labels instead of `str`.
+
 ## [0.0.2]
 
 ### Added

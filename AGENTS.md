@@ -42,6 +42,23 @@ No credentials, network access, or running InfluxDB instance needed — the
 whole suite mocks external calls. CI (`.github/workflows/ci.yml`) runs this
 exact sequence on Python 3.11 and 3.12 for every push/PR.
 
+## Linting and type checking
+
+```
+ruff check src tests
+mypy src/forex
+```
+
+Both are configured in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`) and run
+in CI as a separate `lint` job. `line-length = 120`, not the ruff/black
+default of 88 — this codebase's comments and docstrings are deliberately
+dense/explanatory, and reflowing them to 88 columns would make them harder to
+read, not easier. `SIM103` is disabled for the same readability reason (see
+`critical_timezone.py`'s guard clauses). Mypy uses `ignore_missing_imports`
+rather than pinning `pandas-stubs` — pandas/numpy interop typing is noisy
+with real false positives (ExtensionArray vs ndarray, Index bitwise ops) that
+aren't worth chasing in a repo this size.
+
 ## Conventions and gotchas
 
 - **Config modules lazy-load secrets.** `etl/config/database_config.py`,
