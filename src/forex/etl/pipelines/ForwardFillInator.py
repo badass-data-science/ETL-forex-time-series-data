@@ -271,7 +271,7 @@ class ForwardFillInator:
         plt.figure(figsize=[10, 3])
         plt.plot(x, y, '.', color='magenta')
         plt.yticks([0, 1], ['True', 'False'])
-        plt.ylim([-0.4, 1.4])
+        plt.ylim((-0.4, 1.4))
         plt.ylabel('NaN')
         plt.title('Is data point NaN?')
         plt.tight_layout()
