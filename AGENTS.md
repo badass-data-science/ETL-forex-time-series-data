@@ -1,0 +1,81 @@
+# AGENTS.md
+
+Guidance for AI coding assistants (and future human contributors) working in
+this repo. See `README.md` for the full architecture writeup; this file is
+the fast-start version plus the gotchas that aren't obvious from the code.
+
+## What this is
+
+Fetches OHLCV candlestick, swap-rate, economic-calendar, and positioning data
+from the Oanda REST API (economic calendar comes from Finnhub instead) and
+writes it to InfluxDB via Prefect flows.
+
+## Layout
+
+```
+src/forex/       # the installable package (import as `forex.*`)
+├── critical_timezone.py
+├── etl/         # fetch/transform classes + Pydantic schemas (models.py)
+├── flows/       # Prefect flow wrappers around etl/
+├── oanda/       # Oanda API auth/config helpers
+├── eda/         # exploratory-analysis config constants
+└── util/        # in-house InfluxDB client, AWS secret loader, time constants
+                 # (no external private-repo dependency — see below)
+tests/           # pytest, no network/AWS/InfluxDB required to run
+pyproject.toml   # single source of truth for version + dependencies
+CHANGELOG.md     # Keep a Changelog; headers track pyproject.toml's version
+```
+
+This is a **src-layout, PyPI-publishable package** (`pip install -e ".[dev]"`,
+`python -m build`). Every internal import uses the installed package name:
+`from forex.etl.models import CandlestickRecord`, never a relative path or a
+sys.path hack.
+
+## Running tests
+
+```
+pip install -e ".[dev]"
+pytest tests -v
+```
+
+No credentials, network access, or running InfluxDB instance needed — the
+whole suite mocks external calls. CI (`.github/workflows/ci.yml`) runs this
+exact sequence on Python 3.11 and 3.12 for every push/PR.
+
+## Conventions and gotchas
+
+- **Config modules lazy-load secrets.** `etl/config/database_config.py` and
+  `etl/config/finnhub_config.py` resolve AWS Secrets Manager values via a
+  module-level `__getattr__`, only on attribute access. Always reference them
+  as `database_config.INFLUXDB_URL` (fresh resolution each time), **never**
+  `from database_config import INFLUXDB_URL` — the latter freezes the
+  resolved secret into the importing module's namespace at import time,
+  permanently, with no way to swap credentials later (including during
+  `pytest` collection). See `tests/test_secrets_isolation.py` for the
+  regression test and the real incident this guards against.
+- **No external private-repo dependency.** `forex/util/` is a self-contained,
+  in-house copy of the InfluxDB client, AWS secret loader, and time-unit
+  constants this project needs — not a vendored copy of someone else's
+  package. Don't reintroduce an import from outside this repo for these; add
+  to `forex/util/` instead.
+- **`CHANGELOG.md` must be updated whenever code changes.** Add an entry
+  under `[Unreleased]` (Keep a Changelog categories: Added/Changed/Fixed/
+  Removed) describing the change. Version headers correspond to
+  `pyproject.toml`'s `version` field — don't invent a new version number
+  without also bumping `pyproject.toml`.
+- **Two pipelines are intentionally not live**: `economic_calendar_flow`
+  (Finnhub's free tier 403s on the calendar endpoint) and `positioning_flow`
+  (Oanda discontinued the order-book/position-book endpoints for retail
+  accounts). Both are fully implemented and tested — don't "fix" them by
+  silently swallowing the error; they're dormant on cost/access, not broken.
+  See `README.md`'s Architecture section for the full story before touching
+  either.
+- **DST-aware grid logic in `ForwardFillInator`** is fixed but subtle: H4/D
+  candles anchor to local wall-clock time, not a fixed UTC offset. Read the
+  comment block in `README.md` (search "DST-aware expected-bar grid") before
+  changing anything in `compute_df_all_time_diff_market_open` or the grid
+  construction.
+- **`is_forward_filled`** distinguishes real bars from imputed ones — a
+  forward-filled bar has zero return/volatility by construction. Don't strip
+  this tag or treat forward-filled bars as equivalent to real data anywhere
+  downstream.

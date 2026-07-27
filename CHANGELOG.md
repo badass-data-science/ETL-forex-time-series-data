@@ -8,6 +8,12 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Added
+- `AGENTS.md`, orienting notes for AI coding assistants and future
+  contributors (layout, test invocation, and repo-specific gotchas like the
+  lazy secret-loading pattern and the dormant economic-calendar/positioning
+  pipelines).
+
 ### Changed
 - Reorganized the package into a PyPI-publication-friendly `src/forex/` layout
   (was `etl/`, `flows/`, `oanda/`, `eda/`, `critical_timezone.py` at the repo
