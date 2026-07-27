@@ -25,53 +25,53 @@ from __future__ import annotations
 def test_candlestick_flow_does_not_freeze_secrets_at_import_time():
     from forex.flows import candlestick_flow
 
-    for name in ("INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_BUCKET"):
+    for name in ('INFLUXDB_URL', 'INFLUXDB_TOKEN', 'INFLUXDB_ORG', 'INFLUXDB_BUCKET'):
         assert not hasattr(candlestick_flow, name)
-    assert hasattr(candlestick_flow, "database_config")
+    assert hasattr(candlestick_flow, 'database_config')
 
 
 def test_forward_fill_flow_does_not_freeze_secrets_at_import_time():
     from forex.flows import forward_fill_flow
 
-    for name in ("INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_BUCKET"):
+    for name in ('INFLUXDB_URL', 'INFLUXDB_TOKEN', 'INFLUXDB_ORG', 'INFLUXDB_BUCKET'):
         assert not hasattr(forward_fill_flow, name)
-    assert hasattr(forward_fill_flow, "database_config")
+    assert hasattr(forward_fill_flow, 'database_config')
 
 
 def test_swap_rate_flow_does_not_freeze_secrets_at_import_time():
     from forex.flows import swap_rate_flow
 
-    for name in ("INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_BUCKET"):
+    for name in ('INFLUXDB_URL', 'INFLUXDB_TOKEN', 'INFLUXDB_ORG', 'INFLUXDB_BUCKET'):
         assert not hasattr(swap_rate_flow, name)
-    assert hasattr(swap_rate_flow, "database_config")
+    assert hasattr(swap_rate_flow, 'database_config')
 
 
 def test_economic_calendar_flow_does_not_freeze_secrets_at_import_time():
     from forex.flows import economic_calendar_flow
 
-    for name in ("INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_BUCKET"):
+    for name in ('INFLUXDB_URL', 'INFLUXDB_TOKEN', 'INFLUXDB_ORG', 'INFLUXDB_BUCKET'):
         assert not hasattr(economic_calendar_flow, name)
-    assert hasattr(economic_calendar_flow, "database_config")
+    assert hasattr(economic_calendar_flow, 'database_config')
 
     # economic_calendar_flow also uses a second, separate lazily-loaded secret
     # (Finnhub's API key) -- same pattern, same guarantee applies to it too.
-    assert not hasattr(economic_calendar_flow, "FINNHUB_API_KEY")
-    assert hasattr(economic_calendar_flow, "finnhub_config")
+    assert not hasattr(economic_calendar_flow, 'FINNHUB_API_KEY')
+    assert hasattr(economic_calendar_flow, 'finnhub_config')
 
 
 def test_positioning_flow_does_not_freeze_secrets_at_import_time():
     from forex.flows import positioning_flow
 
-    for name in ("INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_BUCKET"):
+    for name in ('INFLUXDB_URL', 'INFLUXDB_TOKEN', 'INFLUXDB_ORG', 'INFLUXDB_BUCKET'):
         assert not hasattr(positioning_flow, name)
-    assert hasattr(positioning_flow, "database_config")
+    assert hasattr(positioning_flow, 'database_config')
 
 
 def test_candlestick_etl_does_not_freeze_secrets_at_import_time():
     from forex.etl import CandlestickETL
 
-    assert not hasattr(CandlestickETL, "INFLUXDB_BUCKET")
-    assert hasattr(CandlestickETL, "database_config")
+    assert not hasattr(CandlestickETL, 'INFLUXDB_BUCKET')
+    assert hasattr(CandlestickETL, 'database_config')
 
 
 def test_candlestick_pipeline_default_bucket_is_not_a_frozen_default_value():
@@ -84,7 +84,7 @@ def test_candlestick_pipeline_default_bucket_is_not_a_frozen_default_value():
     from forex.etl.pipelines.CandlestickPipeline import CandlestickPipeline
 
     signature = inspect.signature(CandlestickPipeline.__init__)
-    assert signature.parameters["influxdb_bucket"].default is None
+    assert signature.parameters['influxdb_bucket'].default is None
 
 
 def test_missing_env_var_raises_attribute_error_not_key_error(monkeypatch):
@@ -99,12 +99,12 @@ def test_missing_env_var_raises_attribute_error_not_key_error(monkeypatch):
     from forex.etl.config import database_config
     from forex.oanda.config import oanda_config
 
-    monkeypatch.delenv("INFLUXDB_URL", raising=False)
+    monkeypatch.delenv('INFLUXDB_URL', raising=False)
     with pytest.raises(AttributeError):
         _ = database_config.INFLUXDB_URL
-    assert not hasattr(database_config, "INFLUXDB_URL")
+    assert not hasattr(database_config, 'INFLUXDB_URL')
 
-    monkeypatch.delenv("OANDA_SERVER", raising=False)
+    monkeypatch.delenv('OANDA_SERVER', raising=False)
     with pytest.raises(AttributeError):
         _ = oanda_config.OANDA_SERVER
-    assert not hasattr(oanda_config, "OANDA_SERVER")
+    assert not hasattr(oanda_config, 'OANDA_SERVER')

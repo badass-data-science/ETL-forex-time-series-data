@@ -1,5 +1,9 @@
 # Forex ETL Pipeline
 
+[![CI](https://github.com/badass-data-science/ETL-forex-time-series-data/actions/workflows/ci.yml/badge.svg)](https://github.com/badass-data-science/ETL-forex-time-series-data/actions/workflows/ci.yml)
+[![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 Fetches OHLCV candlestick data from the [Oanda REST API](https://developer.oanda.com/rest-live-v20/introduction/) and writes it to InfluxDB. A second pipeline forward-fills gaps left by weekends, holidays, and market-closed periods, tags every bar with whether it was forward-filled, and writes the result back to InfluxDB as its own measurement.
 
 Contributing (human or AI)? See [`AGENTS.md`](AGENTS.md) for a fast-start
@@ -472,12 +476,22 @@ pytest -v     # verbose output (configured in pyproject.toml)
 
 No external dependencies — no Oanda, no InfluxDB, no AWS required to run the test suite.
 
-Linting (`ruff`) and type checking (`mypy`) are configured in `pyproject.toml`
-and run in CI as a separate job (`.github/workflows/ci.yml`):
+Linting (`ruff check`), formatting (`ruff format --check`), and type checking
+(`mypy`) are configured in `pyproject.toml` and run in CI as a separate job
+(`.github/workflows/ci.yml`):
 
 ```
 ruff check src tests
+ruff format --check src tests
 mypy src/forex
+```
+
+Coverage is measured with `pytest-cov` and gated at 65% in CI (current: ~70%
+— see `AGENTS.md` for why flow/orchestration glue code is intentionally not
+chased to 100%):
+
+```
+pytest tests --cov=forex --cov-report=term-missing
 ```
 
 `test_forward_fill_inator.py` covers the `is_forward_filled` flag, the actual

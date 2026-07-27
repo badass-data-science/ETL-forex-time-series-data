@@ -81,8 +81,10 @@ class SwapRateETL:
     def _instruments_url(self, account_id: str, instruments: list[str]) -> str:
         return (
             oanda_config.OANDA_SERVER
-            + '/v3/accounts/' + account_id
-            + '/instruments?instruments=' + ','.join(instruments)
+            + '/v3/accounts/'
+            + account_id
+            + '/instruments?instruments='
+            + ','.join(instruments)
         )
 
     def get_instrument_financing(self) -> dict:

@@ -9,8 +9,12 @@ def test_records_from_calendar_response_parses_a_future_event_with_no_actual_yet
     rj = {
         'economicCalendar': [
             {
-                'event': 'Non-Farm Payrolls', 'country': 'US', 'impact': 'high',
-                'estimate': 200000, 'prev': 199000, 'unit': 'K',
+                'event': 'Non-Farm Payrolls',
+                'country': 'US',
+                'impact': 'high',
+                'estimate': 200000,
+                'prev': 199000,
+                'unit': 'K',
                 'time': '2024-01-05 13:30:00',
             },
         ],
@@ -34,8 +38,13 @@ def test_records_from_calendar_response_parses_a_past_event_with_an_actual_value
     rj = {
         'economicCalendar': [
             {
-                'event': 'CPI', 'country': 'US', 'impact': 'high',
-                'actual': 3.1, 'estimate': 3.0, 'prev': 3.2, 'unit': '%',
+                'event': 'CPI',
+                'country': 'US',
+                'impact': 'high',
+                'actual': 3.1,
+                'estimate': 3.0,
+                'prev': 3.2,
+                'unit': '%',
                 'time': '2023-12-12 13:30:00',
             },
         ],
@@ -82,8 +91,11 @@ def test_fit_produces_valid_influxdb_dicts_and_omits_null_fields(monkeypatch):
         return {
             'economicCalendar': [
                 {
-                    'event': 'Non-Farm Payrolls', 'country': 'US', 'impact': 'high',
-                    'estimate': 200000, 'time': '2024-01-05 13:30:00',
+                    'event': 'Non-Farm Payrolls',
+                    'country': 'US',
+                    'impact': 'high',
+                    'estimate': 200000,
+                    'time': '2024-01-05 13:30:00',
                 },
             ],
         }

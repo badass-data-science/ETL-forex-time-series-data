@@ -1,6 +1,12 @@
 __pycache__/
 *.pyc
 *.egg-info/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
 
 # graphify: keep the reviewable outputs, ignore the working state
 graphify-out/*

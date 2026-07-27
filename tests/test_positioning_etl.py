@@ -75,8 +75,10 @@ def test_compute_positioning_fetches_both_books_for_every_instrument(monkeypatch
     etl.compute_positioning()
 
     assert calls == [
-        ('order', 'EUR_USD'), ('position', 'EUR_USD'),
-        ('order', 'USD_JPY'), ('position', 'USD_JPY'),
+        ('order', 'EUR_USD'),
+        ('position', 'EUR_USD'),
+        ('order', 'USD_JPY'),
+        ('position', 'USD_JPY'),
     ]
     assert len(etl.records) == (2 + 1) * 2  # 2 order buckets + 1 position bucket, per instrument
 

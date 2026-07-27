@@ -5,64 +5,42 @@ from influxdb_client.rest import ApiException
 
 
 class InfluxDbTool:
-
-    #
-    # constructor
-    #
     def __init__(
-            self,
-            INFLUXDB_URL : str,
-            INFLUXDB_TOKEN : str,
-            INFLUXDB_ORG : str,
-            timeout : int = 120000,
-    ):
-        self.INFLUXDB_URL = INFLUXDB_URL
-        self.INFLUXDB_TOKEN = INFLUXDB_TOKEN
-        self.INFLUXDB_ORG = INFLUXDB_ORG
-        self.client = InfluxDBClient(
-            url=self.INFLUXDB_URL, token=self.INFLUXDB_TOKEN, org=self.INFLUXDB_ORG, timeout=timeout,
-        )
+        self,
+        url: str,
+        token: str,
+        org: str,
+        timeout: int = 120000,
+    ) -> None:
+        self.url = url
+        self.token = token
+        self.org = org
+        self.client = InfluxDBClient(url=url, token=token, org=org, timeout=timeout)
 
-    #
-    # deconstructor
-    #
-    def __del__(self):
+    def __del__(self) -> None:
         self.client.close()
 
-    #
-    # create a bucket
-    #
-    def create_bucket(self, bucket_name : str):
+    def create_bucket(self, bucket_name: str) -> None:
         buckets_api = self.client.buckets_api()
-        org = self.client.organizations_api().find_organizations(org = self.INFLUXDB_ORG)[0]
+        org = self.client.organizations_api().find_organizations(org=self.org)[0]
         org_id = org.id
 
         try:
-            # Check if the bucket already exists
             existing_bucket = buckets_api.find_bucket_by_name(bucket_name)
             if existing_bucket:
                 print(f"Bucket '{bucket_name}' already exists.")
             else:
-                # Create a new bucket
-                bucket_req = PostBucketRequest(
-                    org_id = org_id,
-                    name = bucket_name,
-                )
-                bucket = buckets_api.create_bucket(bucket = bucket_req)
-                print("Created bucket:", bucket.name, "schema_type:", bucket.schema_type)
-
+                bucket_req = PostBucketRequest(org_id=org_id, name=bucket_name)
+                bucket = buckets_api.create_bucket(bucket=bucket_req)
+                print('Created bucket:', bucket.name, 'schema_type:', bucket.schema_type)
         except ApiException as e:
-            print(f"Error creating bucket: {e}")
+            print(f'Error creating bucket: {e}')
 
-    #
-    # delete a bucket
-    #
-    def delete_bucket(self, bucket_name : str):
+    def delete_bucket(self, bucket_name: str) -> None:
         buckets_api = self.client.buckets_api()
         buckets = buckets_api.find_buckets().buckets
 
         try:
-            # Find the target bucket
             target_bucket = None
             for bucket in buckets:
                 if bucket.name == bucket_name:
@@ -74,7 +52,7 @@ class InfluxDbTool:
             if not target_bucket:
                 print(f"Bucket '{bucket_name}' not found.")
         except ApiException as e:
-            print(f"Error deleting bucket: {e}")
+            print(f'Error deleting bucket: {e}')
 
     #
     # Convert a column of timestamps (any precision or tz-awareness, or plain
@@ -91,107 +69,83 @@ class InfluxDbTool:
     # input in current pandas rather than silently dropping the offset.
     #
     @staticmethod
-    def _time_column_to_unix_epoch_s(time_series : pd.Series) -> pd.Series:
-        return pd.to_datetime(time_series, utc = True).astype('datetime64[ns, UTC]').astype('int64') // 10**9
+    def _time_column_to_unix_epoch_s(time_series: pd.Series) -> pd.Series:
+        return pd.to_datetime(time_series, utc=True).astype('datetime64[ns, UTC]').astype('int64') // 10**9
 
-    #
-    # Run a Flux query
-    #
-    def run_flux_query_on_forex_database_and_get_dataframe(self, query : str) -> pd.DataFrame:
+    def run_flux_query_on_forex_database_and_get_dataframe(self, query: str) -> pd.DataFrame:
         query_api = self.client.query_api()
-        df = (
-            query_api
-            .query_data_frame(query, org = self.INFLUXDB_ORG)
-        )
+        df = query_api.query_data_frame(query, org=self.org)
 
         for column_name in ['result', 'table']:
             if column_name in df.columns:
-                df.drop(columns = [column_name], inplace = True)
+                df.drop(columns=[column_name], inplace=True)
 
         if '_time' in df.columns:
             df['unix_epoch_s'] = InfluxDbTool._time_column_to_unix_epoch_s(df['_time'])
-            df.drop(columns = ['_time'], inplace = True)
+            df.drop(columns=['_time'], inplace=True)
             column_list = ['unix_epoch_s']
             column_list.extend([x for x in df.columns if x != 'unix_epoch_s'])
             df = df[column_list]
 
         return df
 
-    #
-    # Validate point (for data insertion)
-    #
+    @staticmethod
     def validate_point(
-            measurement,
-            tags,
-            fields,
-            ALLOWED_TAGS,
-            ALLOWED_FIELDS,
-            timestamp,
-            write_precision_str = 's',
-    ):
-
-        # --- schema checks ---
-        extra_tags = set(tags) - ALLOWED_TAGS
+        measurement: str,
+        tags: dict,
+        fields: dict,
+        allowed_tags: frozenset[str],
+        allowed_fields: dict[str, type],
+        timestamp: int,
+        write_precision_str: str = 's',
+    ) -> Point:
+        extra_tags = set(tags) - allowed_tags
         if extra_tags:
-            raise ValueError(f"Unexpected tag(s): {extra_tags}")
+            raise ValueError(f'Unexpected tag(s): {extra_tags}')
 
         for k, v in fields.items():
-            if k not in ALLOWED_FIELDS:
-                raise ValueError(f"Unexpected field: {k}")
-            if not isinstance(v, ALLOWED_FIELDS[k]):
-                raise TypeError(f"Field {k} must be {ALLOWED_FIELDS[k].__name__}")
+            if k not in allowed_fields:
+                raise ValueError(f'Unexpected field: {k}')
+            if not isinstance(v, allowed_fields[k]):
+                raise TypeError(f'Field {k} must be {allowed_fields[k].__name__}')
 
-        # --- build point ---
         p = Point(measurement)
         for k, v in tags.items():
             p = p.tag(k, v)
         for k, v in fields.items():
             p = p.field(k, v)
 
-        write_precision = WritePrecision.NS
-        if write_precision_str == 's':
-            write_precision = WritePrecision.S
+        write_precision = WritePrecision.S if write_precision_str == 's' else WritePrecision.NS
+        return p.time(timestamp, write_precision)
 
-        p = p.time(timestamp, write_precision)
-
-        return p
-
-    #
-    # bulk insert
-    #
     def insert_dictionary_list(
         self,
-        list_of_dictionaries_to_insert,
-        ALLOWED_TAGS,
-        ALLOWED_FIELDS,
-        INFLUXDB_BUCKET,
-        batch_size = 2000,
-        write_precision_str = 's',
-    ):
+        list_of_dictionaries_to_insert: list[dict],
+        allowed_tags: frozenset[str],
+        allowed_fields: dict[str, type],
+        bucket: str,
+        batch_size: int = 2000,
+        write_precision_str: str = 's',
+    ) -> None:
+        write_api = self.client.write_api(write_options=SYNCHRONOUS)
 
-        write_api = self.client.write_api(write_options = SYNCHRONOUS)
-
-        points = []
-        for item in list_of_dictionaries_to_insert:
-
-            p = InfluxDbTool.validate_point(
+        points = [
+            InfluxDbTool.validate_point(
                 item['measurement'],
                 item['tags'],
                 item['fields'],
-                ALLOWED_TAGS,
-                ALLOWED_FIELDS,
+                allowed_tags,
+                allowed_fields,
                 item['time'],
+                write_precision_str,
             )
-            points.append(p)
+            for item in list_of_dictionaries_to_insert
+        ]
 
-        write_precision = WritePrecision.NS
-        if write_precision_str == 's':
-            write_precision = WritePrecision.S
-
+        write_precision = WritePrecision.S if write_precision_str == 's' else WritePrecision.NS
         for i in range(0, len(points), batch_size):
-            batch = points[i:i + batch_size]
-            write_api.write(
-                bucket = INFLUXDB_BUCKET,
-                record = batch,
-                write_precision = write_precision,
-            )
+            batch = points[i : i + batch_size]
+            # influxdb_client's own stubs are inconsistent here: WritePrecision.S/.NS are
+            # plain `str` constants at runtime, but write()'s signature wants a stricter
+            # Literal type -- the value itself is correct, this is a library typing gap.
+            write_api.write(bucket=bucket, record=batch, write_precision=write_precision)  # type: ignore[arg-type]

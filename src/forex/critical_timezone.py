@@ -13,10 +13,10 @@ def is_market_open_at_time(given_time: datetime.datetime) -> bool:
     weekday = given_time.weekday()
     hour = given_time.hour
 
-    if weekday == 4 and hour >= 17:   # Friday close
+    if weekday == 4 and hour >= 17:  # Friday close
         return False
-    if weekday == 5:                   # Saturday
+    if weekday == 5:  # Saturday
         return False
-    if weekday == 6 and hour < 17:    # Sunday pre-open
+    if weekday == 6 and hour < 17:  # Sunday pre-open
         return False
     return True

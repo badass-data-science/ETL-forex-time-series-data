@@ -29,6 +29,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "pytest-cov",
     "ruff",
     "mypy",
 ]
@@ -57,7 +58,22 @@ ignore = [
     "SIM103",  # inlining these guard clauses hurts readability more than it helps
 ]
 
+[tool.ruff.format]
+quote-style = "single"  # matches the codebase's existing convention
+
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
 warn_unused_ignores = true
+
+[tool.coverage.run]
+source = ["forex"]
+
+[tool.coverage.report]
+# Reflects the current honest baseline (~70%): flow/pipeline orchestration
+# wrappers (Prefect tasks, serve.py) are thin glue over already-tested ETL
+# classes and are exercised manually/in staging rather than unit-tested --
+# mocking Prefect's decorators just to hit a number isn't worth it. This
+# threshold exists to catch real regressions in the parts that ARE unit
+# tested, not to chase 100% on glue code.
+fail_under = 65

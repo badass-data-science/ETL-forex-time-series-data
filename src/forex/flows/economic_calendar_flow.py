@@ -15,13 +15,7 @@ from prefect import flow, get_run_logger, task
 from forex.etl.config import database_config, finnhub_config
 from forex.etl.EconomicCalendarETL import EconomicCalendarETL
 from forex.etl.models import EconomicCalendarEventRecord
-from forex.util.influxdb_tool import InfluxDbTool
-
-
-def _make_ifc() -> InfluxDbTool:
-    # See candlestick_flow._make_ifc for why this is a function, not a module-level
-    # constant -- database_config lazy-loads secrets on attribute access.
-    return InfluxDbTool(database_config.INFLUXDB_URL, database_config.INFLUXDB_TOKEN, database_config.INFLUXDB_ORG)
+from forex.flows._common import make_ifc
 
 
 @task(name='fetch-economic-calendar', retries=3, retry_delay_seconds=30)
@@ -39,9 +33,12 @@ def insert_economic_calendar_to_influxdb(records: list[dict]) -> None:
     if not records:
         logger.info('No calendar events to insert')
         return
-    ifc = _make_ifc()
+    ifc = make_ifc()
     ifc.insert_dictionary_list(
-        records, EconomicCalendarEventRecord.TAGS, EconomicCalendarEventRecord.FIELDS, database_config.INFLUXDB_BUCKET,
+        records,
+        EconomicCalendarEventRecord.TAGS,
+        EconomicCalendarEventRecord.FIELDS,
+        database_config.INFLUXDB_BUCKET,
     )
     logger.info('Inserted %d calendar events', len(records))
 

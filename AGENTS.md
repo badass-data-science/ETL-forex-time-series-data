@@ -42,22 +42,46 @@ No credentials, network access, or running InfluxDB instance needed — the
 whole suite mocks external calls. CI (`.github/workflows/ci.yml`) runs this
 exact sequence on Python 3.11 and 3.12 for every push/PR.
 
-## Linting and type checking
+## Linting, formatting, and type checking
 
 ```
-ruff check src tests
-mypy src/forex
+ruff check src tests           # lint
+ruff format --check src tests  # format check (ruff format src tests to fix)
+mypy src/forex tests           # type check
 ```
 
-Both are configured in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`) and run
-in CI as a separate `lint` job. `line-length = 120`, not the ruff/black
-default of 88 — this codebase's comments and docstrings are deliberately
-dense/explanatory, and reflowing them to 88 columns would make them harder to
-read, not easier. `SIM103` is disabled for the same readability reason (see
-`critical_timezone.py`'s guard clauses). Mypy uses `ignore_missing_imports`
-rather than pinning `pandas-stubs` — pandas/numpy interop typing is noisy
-with real false positives (ExtensionArray vs ndarray, Index bitwise ops) that
-aren't worth chasing in a repo this size.
+All three are configured in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`)
+and run in CI as a separate `lint` job. `line-length = 120`, not the
+ruff/black default of 88 — this codebase's comments and docstrings are
+deliberately dense/explanatory, and reflowing them to 88 columns would make
+them harder to read, not easier. `SIM103` is disabled for the same
+readability reason (see `critical_timezone.py`'s guard clauses).
+`quote-style = "single"` in `[tool.ruff.format]` matches the codebase's
+existing convention rather than rewriting every string literal to double
+quotes. Mypy uses `ignore_missing_imports` rather than pinning
+`pandas-stubs` — pandas/numpy interop typing is noisy with real false
+positives (ExtensionArray vs ndarray, Index bitwise ops) that aren't worth
+chasing in a repo this size. A couple of `# type: ignore[arg-type]` comments
+remain where a third-party library's own stubs are imprecise (Prefect's
+`to_deployment()` sync/async overload in `serve.py`; `influxdb_client`'s
+`WritePrecision` being a plain `str` constant at runtime but a stricter
+Literal in `write()`'s signature) — both documented inline at the point of
+use.
+
+## Test coverage
+
+```
+pytest tests --cov=forex --cov-report=term-missing
+```
+
+`[tool.coverage.report]` sets `fail_under = 65`, reflecting the current
+honest baseline (~70%): Prefect flow/task wrappers and `serve.py` are thin
+orchestration glue over already-unit-tested ETL classes, and mocking
+Prefect's decorators just to hit a coverage number isn't worth it — they're
+exercised via `test_secrets_isolation.py`'s import-time checks and manual/
+staging runs instead. The threshold exists to catch regressions in the parts
+that *are* unit tested (all the ETL classes, `models.py`, `InfluxDbTool`,
+`ForwardFillInator`), not to chase 100% on glue code.
 
 ## Conventions and gotchas
 

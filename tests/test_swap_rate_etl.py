@@ -61,9 +61,7 @@ def test_compute_swap_rates_populates_records_from_the_api_response(monkeypatch)
     etl = SwapRateETL(['EUR/USD', 'USD/JPY'])
 
     def fake_fetch(url):
-        assert url == (
-            'https://example.test/v3/accounts/001-001-1234567-001/instruments?instruments=EUR_USD,USD_JPY'
-        )
+        assert url == ('https://example.test/v3/accounts/001-001-1234567-001/instruments?instruments=EUR_USD,USD_JPY')
         return {
             'instruments': [
                 {'name': 'EUR_USD', 'financing': {'longRate': '-0.0067', 'shortRate': '-0.0038'}},
