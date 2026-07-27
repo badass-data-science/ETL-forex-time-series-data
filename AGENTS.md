@@ -145,3 +145,16 @@ that *are* unit tested (all the ETL classes, `models.py`, `InfluxDbTool`,
   architecturally simpler, different kind of pipeline. Cross-check a
   community assignment against `README.md`/this file before treating it as
   a design claim.
+  Two more caveats found while tracing bridge nodes after the
+  professional-review `--update`: (1) `CandlestickETL`'s bridge to
+  `SwapRateETL` in the graph is doc-citation-only (both are mentioned in
+  `README.md`, but never call each other) — don't read it as a code
+  dependency. (2) The same real entity can appear as two separate graph
+  nodes when both AST and semantic extraction touch it — e.g. `make_ifc()`
+  exists once from the real code (`_common.py`) and once from a semantic
+  node created purely because `AGENTS.md`'s prose names it. Harmless, but
+  don't be surprised by an apparent duplicate. Also: **community *IDs* are
+  not stable across `--update` runs** — Louvain re-clusters from scratch
+  each time, so community 3 today is not the same grouping as community 3
+  before the last update. Re-derive labels from actual member content after
+  every update rather than assuming an ID's label still fits.
