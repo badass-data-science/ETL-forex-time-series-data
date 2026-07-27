@@ -37,11 +37,22 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
   on that repo at all, in CI or otherwise; the old CI-only `ci/vendor/`
   workaround is removed as a result.
 
+- Replaced AWS Secrets Manager with plain environment variables as the
+  source of credentials. `database_config` and `finnhub_config` now read
+  `INFLUXDB_URL`/`INFLUXDB_TOKEN`/`INFLUXDB_ORG`/`INFLUXDB_BUCKET` and
+  `FINNHUB_API_KEY` directly from `os.environ`, keeping the same lazy
+  module-level `__getattr__` access pattern (`database_config.INFLUXDB_URL`,
+  never a top-level `from ... import`) so nothing is resolved just by
+  importing a module.
+
 ### Removed
 - `requirements.txt` / `requirements-dev.txt`, superseded by
   `pyproject.toml`'s `dependencies` / `optional-dependencies.dev`.
 - `ci/vendor/`, no longer needed now that `forex.util` carries these modules
   directly.
+- `src/forex/util/secrets_manager.py` and the `boto3` dependency — no longer
+  needed now that credentials come from environment variables instead of AWS
+  Secrets Manager.
 
 ## [0.0.1]
 

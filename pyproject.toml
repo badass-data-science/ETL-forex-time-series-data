@@ -23,7 +23,6 @@ dependencies = [
     "pandas",
     "numpy",
     "matplotlib",
-    "boto3",
     "influxdb-client",
 ]
 

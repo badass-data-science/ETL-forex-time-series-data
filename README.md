@@ -160,8 +160,8 @@ src/forex/
 │   │                              # EconomicCalendarEventRecord/
 │   │                              # PositioningBucketRecord (Pydantic)
 │   ├── config/
-│   │   ├── database_config.py    # InfluxDB credentials (via AWS Secrets Manager)
-│   │   └── finnhub_config.py     # Finnhub API key (via AWS Secrets Manager)
+│   │   ├── database_config.py    # InfluxDB credentials (via environment variables)
+│   │   └── finnhub_config.py     # Finnhub API key (via environment variables)
 │   └── pipelines/
 │       ├── CandlestickPipeline.py
 │       └── ForwardFillInator.py
@@ -176,7 +176,6 @@ src/forex/
 │   ├── headers.py                # builds Oanda auth headers
 │   └── config/price_type_map.py  # bid/ask/mid label mapping
 └── util/                         # vendored-in-house: no external private-repo dependency
-    ├── secrets_manager.py        # get_secret() (AWS Secrets Manager)
     ├── influxdb_tool.py          # InfluxDbTool (InfluxDB read/write)
     └── time_conversions.py       # seconds_in_one_{hour,day,week}
 
@@ -210,21 +209,22 @@ You also need:
   keys (`CandlestickETL`/`SwapRateETL` read these). `SwapRateETL` also uses an
   `account_id` key if present, resolving it via `/v3/accounts` otherwise (see
   "Swap/rollover rates" below).
-- **AWS credentials** in the environment (`AWS_PROFILE` or `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY`) — InfluxDB credentials AND the Finnhub API key are both fetched at runtime from AWS Secrets Manager, under `Forex/InfluxDbPassword` and `Forex/FinnhubApiKey` respectively (two separate secrets — Finnhub isn't part of Oanda's credential set at all)
-- A **Finnhub API key**, stored in the `Forex/FinnhubApiKey` secret as
-  `{"FINNHUB_API_KEY": "..."}` — only needed if running `economic_calendar_flow`
-  manually; note the free tier does **not** include the `/calendar/economic`
-  endpoint (confirmed — returns `403`), so a working key alone isn't enough. See
-  "Architecture" above.
+- **Environment variables** for InfluxDB credentials and the Finnhub API key:
+  `INFLUXDB_URL`, `INFLUXDB_TOKEN`, `INFLUXDB_ORG`, `INFLUXDB_BUCKET`, and
+  `FINNHUB_API_KEY`.
+- A **Finnhub API key**, set as `FINNHUB_API_KEY` — only needed if running
+  `economic_calendar_flow` manually; note the free tier does **not** include
+  the `/calendar/economic` endpoint (confirmed — returns `403`), so a working
+  key alone isn't enough. See "Architecture" above.
 - A running **InfluxDB** instance
 
-`database_config`/`finnhub_config` both lazy-load their credentials via a
+`database_config`/`finnhub_config` both lazy-load these environment variables via a
 module-level `__getattr__` triggered on attribute access. Every module that needs
 them accesses it as `database_config.INFLUXDB_URL` (resolved fresh each call) rather
 than `from database_config import INFLUXDB_URL` — the latter freezes the resolved
-secret into the importing module's own namespace the moment it's imported (including
+value into the importing module's own namespace the moment it's imported (including
 just pytest collecting a test file), permanently, for the life of the process, with
-no way to substitute different credentials afterward. See
+no way to substitute different values afterward. See
 `tests/test_secrets_isolation.py` for the regression test and the real bug
 this guards against — a downstream consumer's "flaky" integration test turned out to
 be silently querying this real InfluxDB instead of its intended local Docker

@@ -45,7 +45,7 @@ exact sequence on Python 3.11 and 3.12 for every push/PR.
 ## Conventions and gotchas
 
 - **Config modules lazy-load secrets.** `etl/config/database_config.py` and
-  `etl/config/finnhub_config.py` resolve AWS Secrets Manager values via a
+  `etl/config/finnhub_config.py` resolve environment variables via a
   module-level `__getattr__`, only on attribute access. Always reference them
   as `database_config.INFLUXDB_URL` (fresh resolution each time), **never**
   `from database_config import INFLUXDB_URL` — the latter freezes the

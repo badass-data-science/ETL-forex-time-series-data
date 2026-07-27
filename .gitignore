@@ -1,3 +1,7 @@
+__pycache__/
+*.pyc
+*.egg-info/
+
 # graphify: keep the reviewable outputs, ignore the working state
 graphify-out/*
 !graphify-out/graph.json
