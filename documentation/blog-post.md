@@ -54,7 +54,7 @@ There is also a practical consideration: InfluxDB has built-in retention policie
 
 ## Pipeline Architecture
 
-The pipeline has three moving parts: the Oanda API client to pull updated Forex price data from the broker, a validation layer to ensure only quality content gets inserted into the database, and finally the InfluxDB insert itself. Prefect coordinates them. Here is the shape of it:
+The pipeline has three moving parts: the Oanda API client to pull updated Forex price data from the broker, a validation layer to ensure only quality content gets inserted into the database, and finally the InfluxDB insert itself. ***Prefect*** coordinates them. Here is the shape of it:
 
 ```
 Oanda REST API
