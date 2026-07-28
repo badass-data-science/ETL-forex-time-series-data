@@ -6,13 +6,7 @@
 
 ## Motivation
 
-Reliable predictive modeling starts with reliable data. This pipeline exists to
-solve the boring-but-hard parts of that problem for forex time series
-specifically: handling market-closed gaps without leaking future information,
-tracking data lineage (real vs. imputed) at the row level, and keeping
-ingestion resilient to a third-party API's quirks — so downstream modeling
-work (`forex-ML`, `forex-strategy`) can assume clean, well-understood inputs
-instead of re-solving these problems itself.
+Reliable predictive modeling starts with reliable data. This pipeline exists to solve the boring-but-hard parts of that problem for forex time series specifically: handling market-closed gaps without leaking future information, tracking data lineage (real vs. imputed) at the row level, and keeping ingestion resilient to a third-party API's quirks — so downstream modeling tools can assume clean, well-understood inputs instead of re-solving these problems itself.
 
 ## What this ETL pipeline does
 
@@ -28,12 +22,12 @@ The whole pipeline is expressed as **Prefect flows** to facilitate easy scheduli
 
 A few things this pipeline does that a quick script wouldn't:
 
-- **A confirmed production bug, root-caused and regression-tested.** The
-  forward-fill grid used to assume a fixed UTC offset held forever; every H4/D
-  bar since the first DST transition it crossed (2010-03-14) was silently
-  misaligned — ~66% of that history. Diagnosed against real market data,
-  fixed, and locked down with dedicated DST-transition tests so it can't
-  regress silently. Full writeup in [Architecture](#architecture) below.
+- **Correctly handles Daylight Saving Time.** The forward-fill grid is built
+  in local wall-clock time and localized per-instant, not a fixed UTC offset,
+  so H4/D candles stay aligned across every spring-forward/fall-back
+  transition — verified against 17 years of real EUR/USD history with zero
+  misaligned rows, and locked down with dedicated DST-transition regression
+  tests. Full writeup in [Architecture](#architecture) below.
 - **Idempotent and resumable by design.** Every flow is safe to re-run:
   `CandlestickETL` resumes from the last stored timestamp instead of
   re-fetching history, `ForwardFillInator` recomputes deterministically from a
