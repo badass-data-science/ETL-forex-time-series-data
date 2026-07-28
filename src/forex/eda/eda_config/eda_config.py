@@ -13,11 +13,9 @@ instrument_list = [
     'USD/CAD',
     'USD/CHF',
     'USD/JPY',
-    # XAU/USD (gold, a commodity CFD, not a currency pair) and the crosses below
-    # added 2026-07-14 to explore whether less USD-major-crowded markets carry
-    # more signal -- see forex-ML's README. Mirrors
-    # forex.flows.candlestick_flow.TRACKED_INSTRUMENTS.
-    'XAU/USD',
+    # The crosses below added 2026-07-14 to explore whether less
+    # USD-major-crowded markets carry more signal -- see forex-ML's README.
+    # Mirrors forex.flows.candlestick_flow.TRACKED_INSTRUMENTS.
     'GBP/JPY',
     'EUR/JPY',
     'AUD/JPY',

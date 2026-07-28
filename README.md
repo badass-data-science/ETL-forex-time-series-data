@@ -6,7 +6,7 @@
 
 ## Motivation
 
-Exceptional, scalable data science begins with robust access to high-quality data. The ETL pipeline described below builds and maintains such data infrastructure to support forex time series analysis and predictive modeling.
+Reliable predictive modeling starts with reliable data. This pipeline exists to solve the boring-but-hard parts of that problem for forex time series specifically: handling market-closed gaps without leaking future information, tracking data lineage (real vs. imputed) at the row level, and keeping ingestion resilient to a third-party API's quirks — so downstream modeling tools can assume clean, well-understood inputs instead of re-solving these problems itself.
 
 ## What this ETL pipeline does
 
@@ -16,49 +16,70 @@ The pipeline then transforms this retrieved time series data into a form suitabl
 
 Finally, this ETL pipeline loads both the raw and forward-filled time series data into [InfluxDB](https://www.influxdata.com/), a database system designed specifically for storing and rapidly serving time series data.
 
-The whole pipeline is expressed in Prefect workflows to facilitate easy scheduling and monitoring.
+The whole pipeline is expressed as **Prefect flows** to facilitate easy scheduling and monitoring.
 
-## Fast facts for potential contributors:
+## Engineering highlights
 
-Contributing as either a human or an AI? See [`AGENTS.md`](AGENTS.md) for a fast-start orientation and the gotchas that aren't obvious from the code. There's also a [graphify](https://github.com/safishamsi/graphify) knowledge graph of this codebase in `graphify-out/`: open `graph.html` in a browser to explore it interactively, or read `GRAPH_REPORT.md` for the audit report (major nodes, cross-community bridges, and suggested questions).
+A few things this pipeline does that a quick script wouldn't:
 
-## Pipeline flow diagrams
+- **Correctly handles Daylight Saving Time.** The forward-fill grid is built
+  in local wall-clock time and localized per-instant, not a fixed UTC offset,
+  so H4/D candles stay aligned across every spring-forward/fall-back
+  transition — verified against 17 years of real EUR/USD history with zero
+  misaligned rows, and locked down with dedicated DST-transition regression
+  tests. Full writeup in [Architecture](#architecture) below.
+- **Idempotent and resumable by design.** Every flow is safe to re-run:
+  `CandlestickETL` resumes from the last stored timestamp instead of
+  re-fetching history, `ForwardFillInator` recomputes deterministically from a
+  fixed cutoff, and the calendar/positioning pulls are naturally idempotent
+  rolling-window queries — no partial-write or double-counting failure modes.
+- **Retry logic that distinguishes real failures from bad requests.** API
+  calls use `tenacity` with backoff, but 4xx responses (bad auth, untradeable
+  instrument) fail fast instead of burning through 5 retries for a
+  deterministic outcome — including a fallback path for OANDA's
+  all-or-nothing batch rejection behavior (see `SwapRateETL`).
+- **Secrets are never resolved at import time.** Credentials load lazily via
+  a module-level `__getattr__`, with a dedicated regression-test suite
+  (`test_secrets_isolation.py`) proving that merely importing a module never
+  touches a real credential — only actually calling code that needs one does.
+- **Schema-first data modeling.** Every InfluxDB measurement is a Pydantic
+  model sharing one base class (`MeasurementRecord`) for serialization —
+  types are validated on ingestion, and the tag/field/measurement mapping
+  lives in exactly one place per schema.
+- **Cost-aware engineering judgment, not just code.** Two pipelines
+  (economic calendar, positioning) are fully implemented and fully tested,
+  then deliberately left dormant with the exact external cost/access
+  constraint documented — rather than silently broken or left unfinished.
+- **CI-enforced quality bar.** 100+ tests with coverage gated in CI, `ruff`
+  (lint *and* format) and `mypy` enforced on every push — see
+  [Tests](#tests) below.
 
-### Pipeline flow diagrams
+## Architecture
+
+### Pipeline flow diagram
 
 ![Pipeline flow diagram](documentation/images/pipeline_flow_diagram.png)
 
 _PlantUML source: [`documentation/pipeline_flow_diagram.puml`](documentation/pipeline_flow_diagram.puml)._
 
-Downstream consumers (e.g. `forex-ML`) can use `is_forward_filled` to distinguish
+Downstream consumers of this data can use `is_forward_filled` to distinguish
 real market data from imputed placeholder bars — a forward-filled bar has zero
 return and zero volatility by construction, which is otherwise indistinguishable
 from a genuinely quiet real market.
 
-**DST-aware expected-bar grid (fixed 2026-07-14):** `ForwardFillInator` decides
+**DST-aware expected-bar grid:** `ForwardFillInator` decides
 which timestamps a candle is expected to exist at by building a grid, then
-merging real data onto it — anything unmatched gets forward-filled. That grid
-used to be a fixed number of UTC seconds between bars, forever
-(`np.arange(mn, mx + step, step)`). H1/M15 candles are anchored to fixed
-UTC-hour/quarter-hour marks, so this was fine for them. H4/D candles are
-anchored to a local time-of-day instead (the same 5pm America/New_York-style
-rollover convention used elsewhere in this pipeline), which shifts by exactly
-one hour, in UTC terms, at every DST transition — so the old grid silently fell
-out of alignment with real data twice a year, and every bar after that point
-got forward-filled from the last real match instead of matched to its own real
-value. Confirmed directly against real EUR/USD history before fixing anything:
-H1/M15 had zero misaligned rows across their full history; H4/D had ~66%
-misaligned, with the very first bad H4 row landing on 2010-03-14 — the exact
-date the US switched to Daylight Time that year. The grid is now built in
-local wall-clock time and localized per-instant, so it tracks the real DST
-shift instead of assuming one fixed UTC offset holds forever (verified: zero
-misaligned rows across all 17 years of real H4 history, spanning every spring
-and fall transition in that range). Already-ingested forward-filled H4/D
-history in InfluxDB needs a re-run of `forward_fill_flow` (or the batch
-equivalent) to pick up the correction — `ForwardFillInator.pull_data()` always
-re-pulls the full history from `cutoff_timestamp` and re-writes every row,
-so one full run recomputes everything; there's no separate backfill script
-needed.
+merging real data onto it — anything unmatched gets forward-filled. H1/M15
+candles are anchored to fixed UTC-hour/quarter-hour marks, immune to DST by
+construction. H4/D candles are anchored to a local time-of-day instead (the
+same 5pm America/New_York-style rollover convention used elsewhere in this
+pipeline), which shifts by exactly one hour, in UTC terms, at every DST
+transition — so the grid is built in local wall-clock time and localized
+per-instant, letting pandas resolve the correct UTC offset for that specific
+moment rather than assuming one fixed offset holds forever. Verified directly
+against real EUR/USD history: zero misaligned rows across the full H1/M15
+history and all 17 years of H4 history, spanning every spring and fall
+transition in that range.
 
 `swap-rate` is a separate, much simpler pipeline: a single current snapshot of
 long/short financing (rollover) rates per instrument, not a historical time series
@@ -104,7 +125,30 @@ with a $22,000/year minimum. Abandoned for now on cost, same as the economic
 calendar above — the code is otherwise complete, but there's no plan-upgrade path
 here, only a fundamentally different (and expensive) product.
 
-Every pipeline is wrapped as a **Prefect flow** (`src/forex/flows/`) for scheduling and observability.
+## Codebase knowledge graph
+
+![Knowledge graph of this codebase](documentation/images/knowledge_graph_screenshot.png)
+
+Every module, function, test, and design-rationale comment in this repo is
+also mapped into a queryable knowledge graph via
+[graphify](https://github.com/safishamsi/graphify) — 367 nodes, 739 edges,
+28 auto-detected communities as of this writing. It's tracked in
+`graphify-out/` (`graph.json` the raw data, `graph.html` the interactive
+viewer shown above, `GRAPH_REPORT.md` the audit report).
+
+Why this matters, beyond a nice visualization: a graph built from the actual
+import graph, call edges, and doc citations surfaces cross-cutting
+dependencies that reading files one at a time won't — e.g. it's how the
+findings that "`CandlestickETL`'s bridge to `SwapRateETL` is doc-citation-only,
+not a code dependency" and "`swap_rate_flow.py` clusters with the candlestick/
+forward-fill flows purely on shared Prefect-wrapper boilerplate, not because
+it's architecturally similar" were actually discovered, not assumed (see
+`AGENTS.md` for the full list of caveats this uncovered). It's
+also a live audit trail: every `--update` diffs against the previous graph,
+so "what changed and why" stays answerable long after a change ships.
+
+Open `graphify-out/graph.html` in a browser to explore it yourself — no
+server needed.
 
 ## Project layout
 
@@ -175,18 +219,20 @@ pip install -e ".[dev]"          # installs prefect, pydantic, tenacity, etc.
 ```
 
 You also need:
-- **Environment variables** for Oanda credentials: `OANDA_SERVER`, `OANDA_TOKEN`,
-  and `OANDA_DATE_TIME_FORMAT` (`CandlestickETL`/`SwapRateETL`/`PositioningETL` all
-  read these). Optionally `OANDA_ACCOUNT_ID` — `SwapRateETL` uses it if set,
-  resolving it via `/v3/accounts` otherwise (see "Swap/rollover rates" below).
-- **Environment variables** for InfluxDB credentials and the Finnhub API key:
-  `INFLUXDB_URL`, `INFLUXDB_TOKEN`, `INFLUXDB_ORG`, `INFLUXDB_BUCKET`, and
-  `FINNHUB_API_KEY`.
-- A **Finnhub API key**, set as `FINNHUB_API_KEY` — only needed if running
-  `economic_calendar_flow` manually; note the free tier does **not** include
-  the `/calendar/economic` endpoint (confirmed — returns `403`), so a working
-  key alone isn't enough. See "Architecture" above.
-- A running **InfluxDB** instance
+
+| Environment variable | Required? | Read by | What it is |
+|---|---|---|---|
+| `OANDA_SERVER` | Required | `CandlestickETL`, `SwapRateETL`, `PositioningETL` | Oanda REST API base URL |
+| `OANDA_TOKEN` | Required | same | Oanda API bearer token |
+| `OANDA_DATE_TIME_FORMAT` | Required | same | Value for Oanda's `Accept-Datetime-Format` header |
+| `OANDA_ACCOUNT_ID` | Optional | `SwapRateETL` | Account ID for the financing-rate endpoint; if unset, resolved automatically via `/v3/accounts` |
+| `INFLUXDB_URL` | Required | `database_config` (all flows) | InfluxDB connection URL |
+| `INFLUXDB_TOKEN` | Required | same | InfluxDB auth token |
+| `INFLUXDB_ORG` | Required | same | InfluxDB organization |
+| `INFLUXDB_BUCKET` | Required | same | InfluxDB bucket name |
+| `FINNHUB_API_KEY` | Required only to run `economic_calendar_flow` | `finnhub_config` | Finnhub API key — note the free tier does **not** include the `/calendar/economic` endpoint (confirmed — returns `403`), so a working key alone isn't enough. See "Architecture" above |
+
+Additionally, you will also need a running **InfluxDB** instance.
 
 `database_config`/`finnhub_config`/`oanda_config` all lazy-load these environment
 variables via a module-level `__getattr__` triggered on attribute access. Every
@@ -195,14 +241,12 @@ fresh each call) rather than `from database_config import INFLUXDB_URL` — the
 latter freezes the resolved value into the importing module's own namespace the
 moment it's imported (including just pytest collecting a test file), permanently,
 for the life of the process, with no way to substitute different values
-afterward. See `tests/test_secrets_isolation.py` for the regression test and the
-real bug this guards against — a downstream consumer's "flaky" integration test
-turned out to be silently querying this real InfluxDB instead of its intended
-local Docker container, because of exactly this.
+afterward. See `tests/test_secrets_isolation.py` for the regression test that
+guards against this.
 
 ## Running
 
-There are two entry points: a one-off run for a single instrument, and a scheduled deployment that covers all 14 tracked instruments across four granularities.
+There are two entry points: a one-off run for a single instrument, and a scheduled deployment that covers all 13 tracked instruments across four granularities.
 
 ### Option 1 — One-off run (no Prefect server needed)
 
@@ -278,15 +322,15 @@ feeds it:
 
 | Deployment | Cron | Granularity | Instruments |
 |---|---|---|---|
-| `candlestick-D` | `5 0 * * *` | D | all 14 tracked |
-| `candlestick-H1` | `5 * * * *` | H1 | all 14 tracked |
-| `candlestick-H4` | `20 * * * *` | H4 | all 14 tracked |
-| `candlestick-M15` | `2,17,32,47 * * * *` | M15 | all 14 tracked |
-| `forward-fill-D` | `15 0 * * *` | D | all 14 tracked |
-| `forward-fill-H1` | `15 * * * *` | H1 | all 14 tracked |
-| `forward-fill-H4` | `30 * * * *` | H4 | all 14 tracked |
-| `forward-fill-M15` | `12,27,42,57 * * * *` | M15 | all 14 tracked |
-| `swap-rate-D` | `45 20 * * *` | n/a | all 14 tracked |
+| `candlestick-D` | `5 0 * * *` | D | all 13 tracked |
+| `candlestick-H1` | `5 * * * *` | H1 | all 13 tracked |
+| `candlestick-H4` | `20 * * * *` | H4 | all 13 tracked |
+| `candlestick-M15` | `2,17,32,47 * * * *` | M15 | all 13 tracked |
+| `forward-fill-D` | `15 0 * * *` | D | all 13 tracked |
+| `forward-fill-H1` | `15 * * * *` | H1 | all 13 tracked |
+| `forward-fill-H4` | `30 * * * *` | H4 | all 13 tracked |
+| `forward-fill-M15` | `12,27,42,57 * * * *` | M15 | all 13 tracked |
+| `swap-rate-D` | `45 20 * * *` | n/a | all 13 tracked |
 
 `candlestick-H4`/`forward-fill-H4` poll every hour rather than every 4 hours at a
 guessed boundary offset -- OANDA's exact H4 candle-close alignment (UTC vs.
@@ -295,11 +339,10 @@ NY-timezone-anchored, and whether/how it shifts with DST) isn't confirmed, and
 polling more often than a new candle actually closes just finds nothing new rather
 than risking a wrong guess silently missing candles for hours.
 
-The 14 tracked instruments are: EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD,
-NZD/USD (the seven FX majors), XAU/USD (gold, added 2026-07-14 to test whether a
-different asset class carries more signal than heavily-arbitraged FX majors), and
-six FX crosses added the same window for the same reason: GBP/JPY, EUR/JPY, AUD/JPY,
-EUR/GBP, AUD/NZD, EUR/CHF.
+The tracked instruments are: EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD,
+NZD/USD (the seven FX majors), and six FX crosses added 2026-07-14 to explore
+whether less USD-major-crowded markets carry more signal than heavily-arbitraged
+FX majors: GBP/JPY, EUR/JPY, AUD/JPY, EUR/GBP, AUD/NZD, EUR/CHF.
 
 `swap-rate-D` runs at 20:45 UTC — about 15 minutes before the 5pm New York rollover
 cutoff (a fixed UTC time, not DST-aware, the same simplification forex-ML's own
@@ -475,3 +518,10 @@ still `NaN` after forward-filling (leading rows before any real candle exists to
 fill from). A `TODO` remains in that method to replace it with an explicit holiday
 calendar, so extended multi-day closures (e.g. Christmas week) get dropped/flagged
 instead of bridged over with a stale price.
+
+## Contributing
+
+Contributing as either a human or an AI? See [`AGENTS.md`](AGENTS.md) for a
+fast-start orientation and the gotchas that aren't obvious from the code —
+the lazy-secret-loading pattern, the `MeasurementRecord`/`make_ifc()`
+conventions, and the knowledge-graph caveats above, among others.
