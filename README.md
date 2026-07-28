@@ -15,6 +15,12 @@ cross-community bridges, suggested questions).
 
 ## Architecture
 
+### Pipeline flow diagrams
+
+![Pipeline flow diagram](documentation/images/pipeline_flow_diagram.png)
+
+_PlantUML source: [`documentation/pipeline_flow_diagram.puml`](documentation/pipeline_flow_diagram.puml)._
+
 ```
 Oanda REST API
       │
