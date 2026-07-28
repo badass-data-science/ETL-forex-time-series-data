@@ -272,21 +272,21 @@ Because Claude Code became so familiar with the pipeline codebase and knowledge 
 
 ## Tags
 
-forex
-forecasting
-time series
-InfluxDB
-ETL
-Prefect
-data science
-data engineering
-AI
-machine learning
-Python
-time series database
-knowledge graph
-database
-PostgreSQL
-SQL
+- forex
+- forecasting
+- time series
+- InfluxDB
+- ETL
+- Prefect
+- data science
+- data engineering
+- AI
+- machine learning
+- Python
+- time series database
+- knowledge graph
+- database
+- PostgreSQL
+- SQL
 Claude Code
 graphify
