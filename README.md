@@ -24,9 +24,6 @@ Contributing as either a human or an AI? See [`AGENTS.md`](AGENTS.md) for a fast
 
 ## Pipeline flow diagrams
 
-![flow-diagrams](./documentation/images/pipeline-flow-diagram.png)
-
-
 ```
 Oanda REST API
       │
