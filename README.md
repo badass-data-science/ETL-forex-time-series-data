@@ -8,16 +8,17 @@
 
 Exceptional, scalable data science begins with robust access to high-quality data. The ETL pipeline described below builds and maintains such data infrastructure to support forex time series analysis and predictive modeling.
 
-This ETL pipeline begins by extracting up-to-date forex time series price and volume data from the [Oanda REST API](https://developer.oanda.com/rest-live-v20/introduction/) for a given pre-specified set of currency pair instruments and time step granularities. Users may easily add further currency pair instruments and time step granularies to this pipeline's set of cases to process, provided Oanda provides data for instruments/granularities requested.
+## What this ETL pipeline does
 
-The pipeline next transforms the retrieved time series data into a form suitable for ML/statistical prediction modeling by forward-filling any gaps found within each retrieved time series, i.e., filling gaps left by weekends, holidays, and market-closure periods in a manner than prevents inducing lookaheads into each of the time series it pulls. During this process, each of these forward-filled time steps is flagged to ensure data lineage traceability.
+The ETL pipeline begins by extracting up-to-date forex time series price and volume data from the [Oanda REST API](https://developer.oanda.com/rest-live-v20/introduction/) for a given (pre-specified) set of currency pair instruments and time step granularities. Users may easily add further currency pair instruments and time step granularies to this pipeline's set of cases to process, provided Oanda provides data for the instruments/granularities requested.
 
+The pipeline then transforms this retrieved time series data into a form suitable for ML/statistical prediction modeling by forward-filling any gaps found within the retrieved time series, i.e., filling gaps left by weekends, holidays, and market-closure periods in a manner than prevents the induction of lookaheads into each of the time series it pulls. During this process, each of these forward-filled time steps is flagged to ensure data lineage traceability.
 
+Finally, this ETL pipeline loads both the raw and forward-filled time series data into [InfluxDB](https://www.influxdata.com/), a database system designed specifically for storing and rapidly serving time series data.
 
+## Fast facts for potential contributors:
 
-and then writes it to the [InfluxDB](https://www.influxdata.com/) time series database. It then refines this initial data extraction by forward-filling any gaps in found within the initially retrieved time series left by weekends, holidays, and market-closure periods, tags every database entry with an indicator stating whether it was forward-filled, and writes the result back to InfluxDB as its own measurement.
-
-Contributing (human or AI)? See [`AGENTS.md`](AGENTS.md) for a fast-start orientation and the gotchas that aren't obvious from the code. There's also a [graphify](https://github.com/safishamsi/graphify) knowledge graph of this codebase in `graphify-out/`: open `graph.html` in a browser to explore it interactively, or read `GRAPH_REPORT.md` for the audit report (major nodes, cross-community bridges, and suggested questions).
+Contributing as either a human or an AI? See [`AGENTS.md`](AGENTS.md) for a fast-start orientation and the gotchas that aren't obvious from the code. There's also a [graphify](https://github.com/safishamsi/graphify) knowledge graph of this codebase in `graphify-out/`: open `graph.html` in a browser to explore it interactively, or read `GRAPH_REPORT.md` for the audit report (major nodes, cross-community bridges, and suggested questions).
 
 ## Architecture
 
