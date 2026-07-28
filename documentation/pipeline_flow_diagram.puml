@@ -1,0 +1,97 @@
+@startuml pipeline_flow_diagram
+title Forex ETL Pipeline -- Flow Diagram
+skinparam backgroundColor transparent
+skinparam rectangle {
+    BackgroundColor #F5F5F5
+    BorderColor #888888
+}
+skinparam database {
+    BackgroundColor #DCE8F5
+    BorderColor #4A6FA5
+}
+
+package "Candlestick / Forward-Fill Pipeline" {
+    rectangle "Oanda REST API" as OandaAPI1
+    rectangle "CandlestickETL\n(fetches, retries, validates)" as CandlestickETL
+    rectangle "CandlestickRecord\n(Pydantic; single source of\ntruth for schema)" as CandlestickRecord
+    rectangle "CandlestickPipeline\n(orchestrates ETL, QA,\nInfluxDB write)" as CandlestickPipeline
+    database "InfluxDB\n('candlestick')" as InfluxDB1
+    rectangle "ForwardFillInator\n(fills market-closed gaps with\nlast known price)" as ForwardFillInator
+    rectangle "ForwardFilledCandlestickRecord\n(Pydantic; forward-filled schema)" as FFRecord
+    database "InfluxDB\n('forward-filled candlestick')" as InfluxDB2
+
+    OandaAPI1 --> CandlestickETL
+    CandlestickETL --> CandlestickRecord
+    CandlestickRecord --> CandlestickPipeline
+    CandlestickPipeline --> InfluxDB1
+    InfluxDB1 --> ForwardFillInator
+    ForwardFillInator --> FFRecord
+    FFRecord --> InfluxDB2
+
+    note right of ForwardFillInator
+        Tags each bar
+        is_forward_filled: True/False.
+        Grid is DST-aware (built in
+        local wall-clock time, not a
+        fixed UTC step) -- see README
+        "DST-aware expected-bar grid".
+    end note
+}
+
+package "Swap-Rate Pipeline" {
+    rectangle "Oanda REST API" as OandaAPI2
+    rectangle "SwapRateETL\n(fetches per-instrument\nlong/short financing rates)" as SwapRateETL
+    rectangle "SwapRateRecord\n(Pydantic; single source of\ntruth for schema)" as SwapRateRecord
+    database "InfluxDB\n('swap-rate')" as InfluxDB3
+
+    OandaAPI2 --> SwapRateETL
+    SwapRateETL --> SwapRateRecord
+    SwapRateRecord --> InfluxDB3
+
+    note right of SwapRateETL
+        A single current snapshot,
+        not a historical time series --
+        no ETL/pipeline/QA class
+        hierarchy needed.
+    end note
+}
+
+package "Economic Calendar Pipeline" #FFF0F0 {
+    rectangle "Finnhub API\n(NOT Oanda -- separate\nprovider/credential)" as FinnhubAPI
+    rectangle "EconomicCalendarETL\n(fetches upcoming scheduled\neconomic release events)" as EconomicCalendarETL
+    rectangle "EconomicCalendarEventRecord\n(Pydantic; single source of\ntruth for schema)" as EconomicCalendarEventRecord
+    database "InfluxDB\n('economic-calendar-event')" as InfluxDB4
+
+    FinnhubAPI --> EconomicCalendarETL
+    EconomicCalendarETL --> EconomicCalendarEventRecord
+    EconomicCalendarEventRecord --> InfluxDB4
+
+    note right of EconomicCalendarETL
+        **Status: not currently ingested.**
+        Finnhub's free tier returns 403
+        on /calendar/economic; the paid
+        tier is out of budget. Code is
+        complete and unit-tested.
+    end note
+}
+
+package "Positioning Pipeline" #FFF0F0 {
+    rectangle "Oanda REST API" as OandaAPI3
+    rectangle "PositioningETL\n(fetches order-book +\nposition-book snapshots)" as PositioningETL
+    rectangle "PositioningBucketRecord\n(Pydantic; single source of\ntruth for schema)" as PositioningBucketRecord
+    database "InfluxDB\n('positioning-bucket')" as InfluxDB5
+
+    OandaAPI3 --> PositioningETL
+    PositioningETL --> PositioningBucketRecord
+    PositioningBucketRecord --> InfluxDB5
+
+    note right of PositioningETL
+        **Status: not currently ingested.**
+        OANDA discontinued the
+        orderBook/positionBook endpoints
+        for retail accounts; now enterprise-
+        only. Code is complete and unit-tested.
+    end note
+}
+
+@enduml
