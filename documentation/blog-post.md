@@ -1,12 +1,12 @@
-SUBTITLE:  Our heroine builds a production-grade OHLCV pipeline using InfluxDB and Prefect
+# A Time-Series Database for Forex Data Engineering
 
-
-
+***SUBTITLE:***  Our heroine builds a production-grade OHLCV pipeline using InfluxDB and Prefect
 
 Our heroine—a mild-mannered data scientist by day—ruthlessly shorts flailing assets by night. She wants to build AI/ML-based systematic trading strategies, but such trading strategies require data. Reliable, clean, continuously updated data. And so, before she can do anything interesting with Forex prices using ML, she has to solve a more fundamental problem: how does one store and maintain over a decade's worth of candlestick data in a way that makes it fast to query, easy to update, and is honest about what that data storage contains?
 
 So our intrepid heroine built a robust ETL pipeline to perform that exact task. In the future she will use the database this pipeline maintains to generate AI/ML-based forecasting strategies. But this current post is about the pipeline and database themselves:
-# Why Forex, and Why Candlesticks
+
+## Why Forex, and Why Candlesticks
 
 Our heroine sources her data from Oanda, a retail Forex broker that exposes a REST API for historical and streaming price data. Oanda provides candlestick (OHLCV) data: for each time interval, the open, high, low, and close prices for both the bid and ask sides of the market, plus volume.
 
@@ -23,7 +23,8 @@ A candlestick for EUR/USD at hourly granularity looks roughly like this in Oanda
 ```
 
 The `complete` flag matters: an incomplete candlestick means the interval hasn't closed yet. Including incomplete candles in a training dataset would introduce look-ahead bias. The pipeline filters them out.
-# The Database Decision: Why InfluxDB
+
+## The Database Decision: Why InfluxDB
 
 The data is time series. Native time series. And our heroine really digs working with time series information. Therefore she wanted a database system equally time series-native.
 
@@ -45,12 +46,13 @@ from(bucket: "forex")
 
 Running this query produces the following example output:
 
-![Flux-Query-Example](Flux-Query.png)
+![Flux-Query-Example](images/Flux-Query.png)
 
 The same query in SQL would require a WHERE clause, a timestamp index hint, and if you want the bid and ask fields as columns rather than rows, a pivot or a set of self-joins. InfluxDB makes the common case simple.
 
 There is also a practical consideration: InfluxDB has built-in retention policies, downsampling tasks, and a time-series aware data model that handles the `max(timestamp)` query—e.g., "what is the most recent candlestick already stored for this instrument?"—extremely efficiently. Our heroine uses this query during every pipeline run to determine where to resume ingestion. In a relational database this procedure would require a table scan or a carefully maintained index. In InfluxDB it is a first-class operation.
-# Pipeline Architecture
+
+## Pipeline Architecture
 
 The pipeline has three moving parts: the Oanda API client to pull updated Forex price data from the broker, a validation layer to ensure only quality content gets inserted into the database, and finally the InfluxDB insert itself. Prefect coordinates them. Here is the shape of it:
 
@@ -67,7 +69,8 @@ InfluxDB
 ```
 
 Each layer has a single responsibility. The ETL class fetches and normalises raw API responses. Then the Pydantic model validates the shape of each record and produces the dict structure that InfluxDB expects. Finally the InfluxDB tool handles the write. Nothing crosses those boundaries.
-# Fetching Data: CandlestickETL
+
+## Fetching Data: CandlestickETL
 
 The Oanda API returns up to 5,000 candles per request. Our heroine's `CandlestickETL` class walks backward through time in 5,000-candle windows until it reaches the most recent timestamp already stored in InfluxDB, then writes only the new records. On first run it fetches from 2010 (near the beginning of available Oanda data). On subsequent runs it resumes from where it left off.
 
@@ -87,7 +90,8 @@ def _fetch_from_api(self, url: str) -> dict:
 ```
 
 Five attempts, two seconds between each, re-raise on final failure so Prefect can record the task as failed rather than hanging.
-# Validation: CandlestickRecord
+
+## Validation: CandlestickRecord
 
 Before anything touches the database, each candle passes through a Pydantic model:
 
@@ -133,7 +137,7 @@ This separation is visible in the knowledge graph of our heroine's codebase. The
 ![graphify community graph, Communities 4 (CandlestickETL Core), 17 (Candlestick Pydantic Model & Tests), and 35 (InfluxDB Tool) highlighted and annotated](forex-etl-graph-1.png)
 *Three separate communities in the knowledge graph. CandlestickRecord sits between the ETL core and the database tool but shares no edges with either — it only produces a Python dictionary.*
 
-# Secrets: The PEP 562 Pattern
+## Secrets: The PEP 562 Pattern
 
 The InfluxDB credentials live in AWS Secrets Manager under the key `Forex/InfluxDbPassword`. Fetching them at module import time—the naive approach—means credentials are retrieved before `main()` runs, before any argument parsing, and potentially in contexts (test runs, linting, CI) where AWS access is neither available nor desired.
 
@@ -169,11 +173,12 @@ The pattern is largely invisible to static analysis tools, including the knowled
 
 
 The invisibility is, in a way, the point. A design that is opaque to static analysis is also opaque to casual inspection of the codebase. Credentials that are never bound to a module-level variable, never written to `os.environ`, and never fetched until the moment they are needed are credentials that are harder to accidentally log, serialize, or expose.
-# Orchestration: Prefect
+
+## Orchestration: Prefect
 
 The pipeline originally ran as cron job calling a Python class directly. This worked, but provided no visibility into failures, no retry policy at the workflow level, and no run history. Our heroine improved this situation by replacing the cron job with a Prefect flow:
 
-![Prefect-Run](prefect-run.png)
+![Prefect-Run](images/prefect-run.png)
 
 The complete candlestick fetch flow consists of three tasks and a flow function:
 
@@ -222,7 +227,7 @@ The flow's data path is fully traceable in the knowledge graph:
 ![Flow-as-Graph](forex-etl-graph-4.png)
 *The complete data path as the knowledge graph sees it. Both the fetch and insert tasks construct InfluxDbTool independently via _make_ifc(), which is why the graph shows two separate edges from different tasks to the same InfluxDbTool node.*
 
-# The Forward Fill
+## The Forward Fill
 
 Forex markets do not produce a candle for every interval. If no trades occur during a 15-minute window, Oanda returns nothing for that window. However, machine learning models do not work well with gaps in their input sequences.
 
@@ -231,7 +236,8 @@ The `ForwardFillInator` class addresses this. It pulls the stored candlestick da
 The market-hours logic that governs the time grid is the same `is_market_open_at_time()` function used by the pipeline's market gate—a single source of truth for what counts as a trading interval, used both to decide whether to run and to decide which rows to include in the forward-filled output.
 
 Forward-filling plays another critical role: preventing "lookaheads" from polluting any forecasting models created from the data. The operation prevents database users from accidentally utilizing future data that would not be available in a real-world scenario. By contrast, had our heroine employed interpolation to fill gaps and then built a forecasting model on such data, when faced with a gap at the time of forecast creation she would need information unavailable at that time because it hadn't occurred yet.
-# What the Knowledge Graph Reveals
+
+## What the Knowledge Graph Reveals
 
 Our heroine uses a knowledge graph tool to visualize the architecture of her codebase. The graph clusters code into communities by structural similarity and shared dependencies. Three observations regarding the code prove easier to see in this visualization than in the code itself:
 
@@ -243,15 +249,18 @@ Our heroine uses a knowledge graph tool to visualize the architecture of her cod
 
 ![forex-etl-graph-5](forex-etl-graph-5.png)
 *The full portfolio knowledge graph.*
-# Next Steps
+
+## Next Steps
 
 Our heroine's next few tasks will actually use this data. The pipeline is plumbing—the interesting work will be what she builds on top of it. Upcoming posts will cover feature engineering on the forward-filled OHLCV sequences, the construction of a backtesting framework, and eventually the development of a systematic trading strategy that runs without manual intervention.
-# AI Use Statement
+
+## AI Use Statement
 
 The Forex ETL pipeline described above was originally developed by the author from scratch. She then worked collaboratively with Claude Code review the design, fix bugs, and modernize the architecture. During that process our heroine employed graphify to generate the knowledge graph that facilitated Claude Code's analysis, thereby reducing overall token burden.
 
 Because Claude Code became so familiar with the pipeline codebase and knowledge graph, our heroine decided to see how well it drafted a blog post about the pipeline. This turned out pretty well; she kept the draft's basic structure but significantly adjusted the wording to better fit her writing style. 
-# Tags
+
+## Tags
 
 forex
 forecasting
