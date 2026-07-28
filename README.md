@@ -16,7 +16,7 @@ The pipeline then transforms this retrieved time series data into a form suitabl
 
 Finally, this ETL pipeline loads both the raw and forward-filled time series data into [InfluxDB](https://www.influxdata.com/), a database system designed specifically for storing and rapidly serving time series data.
 
-The whole pipeline is expressed in Prefect workflows to facilitate easy scheduling and monitoring.
+The whole pipeline is expressed as **Prefect flows** to facilitate easy scheduling and monitoring.
 
 ## Fast facts for potential contributors:
 
@@ -24,87 +24,9 @@ Contributing as either a human or an AI? See [`AGENTS.md`](AGENTS.md) for a fast
 
 ## Pipeline flow diagrams
 
-### Pipeline flow diagrams
-
 ![Pipeline flow diagram](documentation/images/pipeline_flow_diagram.png)
 
 _PlantUML source: [`documentation/pipeline_flow_diagram.puml`](documentation/pipeline_flow_diagram.puml)._
-
-Downstream consumers (e.g. `forex-ML`) can use `is_forward_filled` to distinguish
-real market data from imputed placeholder bars — a forward-filled bar has zero
-return and zero volatility by construction, which is otherwise indistinguishable
-from a genuinely quiet real market.
-
-**DST-aware expected-bar grid (fixed 2026-07-14):** `ForwardFillInator` decides
-which timestamps a candle is expected to exist at by building a grid, then
-merging real data onto it — anything unmatched gets forward-filled. That grid
-used to be a fixed number of UTC seconds between bars, forever
-(`np.arange(mn, mx + step, step)`). H1/M15 candles are anchored to fixed
-UTC-hour/quarter-hour marks, so this was fine for them. H4/D candles are
-anchored to a local time-of-day instead (the same 5pm America/New_York-style
-rollover convention used elsewhere in this pipeline), which shifts by exactly
-one hour, in UTC terms, at every DST transition — so the old grid silently fell
-out of alignment with real data twice a year, and every bar after that point
-got forward-filled from the last real match instead of matched to its own real
-value. Confirmed directly against real EUR/USD history before fixing anything:
-H1/M15 had zero misaligned rows across their full history; H4/D had ~66%
-misaligned, with the very first bad H4 row landing on 2010-03-14 — the exact
-date the US switched to Daylight Time that year. The grid is now built in
-local wall-clock time and localized per-instant, so it tracks the real DST
-shift instead of assuming one fixed UTC offset holds forever (verified: zero
-misaligned rows across all 17 years of real H4 history, spanning every spring
-and fall transition in that range). Already-ingested forward-filled H4/D
-history in InfluxDB needs a re-run of `forward_fill_flow` (or the batch
-equivalent) to pick up the correction — `ForwardFillInator.pull_data()` always
-re-pulls the full history from `cutoff_timestamp` and re-writes every row,
-so one full run recomputes everything; there's no separate backfill script
-needed.
-
-`swap-rate` is a separate, much simpler pipeline: a single current snapshot of
-long/short financing (rollover) rates per instrument, not a historical time series
-like candlesticks, so there's no ETL/pipeline/QA class hierarchy for it — just
-`SwapRateETL` directly. Downstream, `forex-ML`'s `forex_ml/data/swap_rates.py`
-reads this measurement directly (converting OANDA's annual-rate-as-decimal
-convention to a per-night percentage) to account for the real cost of holding a
-position past the 5pm New York rollover cutoff — both in triple-barrier labeling
-and, via that same module, in `forex-strategy`'s backtest.
-
-`economic-calendar-event` is the one pipeline here NOT sourced from Oanda — economic
-calendar data (scheduled release times, country, impact level, actual/estimate/
-previous values) isn't part of Oanda's API at all, so it comes from
-[Finnhub](https://finnhub.io/), with its own separate API-key credential (see
-"Prerequisites" below). Like swap rates, it's a forward-looking pull over a date
-range rather than an incremental backfill — re-pulling the same rolling window daily
-is cheap and naturally idempotent, and picks up newly-published `actual` values for
-events that already occurred.
-
-**Status: not currently ingested.** `/calendar/economic` returns `403` on
-Finnhub's free tier (confirmed with a valid, working API key — the free plan
-simply doesn't include this endpoint); the paid tier that does is priced well
-outside this project's budget. The code is complete and unit-tested, ready to run
-the moment either a cheaper provider is found or the budget changes — abandoned
-for now on cost, not because anything here is broken.
-
-`positioning-bucket` is back to Oanda's own API/token (the `/v3/instruments/
-{instrument}/orderBook` and `/positionBook` endpoints, reachable with no new auth
-work) — aggregated retail order-book/position-book data, one row per price bucket
-per snapshot rather than a single collapsed "overall % long/short" stat: Oanda's
-per-bucket percentage normalization isn't something to silently reinterpret here,
-so a downstream consumer computes whatever aggregate it actually needs directly
-from the raw buckets. A real snapshot can carry a hundred-plus buckets per
-instrument per book type, a real storage/cardinality cost worth being aware of
-unlike every other measurement in this pipeline.
-
-**Status: not currently ingested.** Confirmed directly against both a practice
-and a live production account/token (the live token independently verified valid
-against other endpoints) that these endpoints reject every request. OANDA
-discontinued orderBook/positionBook entirely as a business decision; the data is
-now only offered through a separate enterprise product priced at $1,850/month
-with a $22,000/year minimum. Abandoned for now on cost, same as the economic
-calendar above — the code is otherwise complete, but there's no plan-upgrade path
-here, only a fundamentally different (and expensive) product.
-
-Every pipeline is wrapped as a **Prefect flow** (`src/forex/flows/`) for scheduling and observability.
 
 ## Project layout
 
@@ -175,18 +97,20 @@ pip install -e ".[dev]"          # installs prefect, pydantic, tenacity, etc.
 ```
 
 You also need:
-- **Environment variables** for Oanda credentials: `OANDA_SERVER`, `OANDA_TOKEN`,
-  and `OANDA_DATE_TIME_FORMAT` (`CandlestickETL`/`SwapRateETL`/`PositioningETL` all
-  read these). Optionally `OANDA_ACCOUNT_ID` — `SwapRateETL` uses it if set,
-  resolving it via `/v3/accounts` otherwise (see "Swap/rollover rates" below).
-- **Environment variables** for InfluxDB credentials and the Finnhub API key:
-  `INFLUXDB_URL`, `INFLUXDB_TOKEN`, `INFLUXDB_ORG`, `INFLUXDB_BUCKET`, and
-  `FINNHUB_API_KEY`.
-- A **Finnhub API key**, set as `FINNHUB_API_KEY` — only needed if running
-  `economic_calendar_flow` manually; note the free tier does **not** include
-  the `/calendar/economic` endpoint (confirmed — returns `403`), so a working
-  key alone isn't enough. See "Architecture" above.
-- A running **InfluxDB** instance
+
+| Environment variable | Required? | Read by | What it is |
+|---|---|---|---|
+| `OANDA_SERVER` | Required | `CandlestickETL`, `SwapRateETL`, `PositioningETL` | Oanda REST API base URL |
+| `OANDA_TOKEN` | Required | same | Oanda API bearer token |
+| `OANDA_DATE_TIME_FORMAT` | Required | same | Value for Oanda's `Accept-Datetime-Format` header |
+| `OANDA_ACCOUNT_ID` | Optional | `SwapRateETL` | Account ID for the financing-rate endpoint; if unset, resolved automatically via `/v3/accounts` |
+| `INFLUXDB_URL` | Required | `database_config` (all flows) | InfluxDB connection URL |
+| `INFLUXDB_TOKEN` | Required | same | InfluxDB auth token |
+| `INFLUXDB_ORG` | Required | same | InfluxDB organization |
+| `INFLUXDB_BUCKET` | Required | same | InfluxDB bucket name |
+| `FINNHUB_API_KEY` | Required only to run `economic_calendar_flow` | `finnhub_config` | Finnhub API key — note the free tier does **not** include the `/calendar/economic` endpoint (confirmed — returns `403`), so a working key alone isn't enough. See "Architecture" above |
+
+You'll also need a running **InfluxDB** instance.
 
 `database_config`/`finnhub_config`/`oanda_config` all lazy-load these environment
 variables via a module-level `__getattr__` triggered on attribute access. Every
@@ -475,3 +399,87 @@ still `NaN` after forward-filling (leading rows before any real candle exists to
 fill from). A `TODO` remains in that method to replace it with an explicit holiday
 calendar, so extended multi-day closures (e.g. Christmas week) get dropped/flagged
 instead of bridged over with a stale price.
+
+
+
+
+
+
+
+## Stuff
+
+
+
+Downstream consumers (e.g. `forex-ML`) can use `is_forward_filled` to distinguish
+real market data from imputed placeholder bars — a forward-filled bar has zero
+return and zero volatility by construction, which is otherwise indistinguishable
+from a genuinely quiet real market.
+
+**DST-aware expected-bar grid (fixed 2026-07-14):** `ForwardFillInator` decides
+which timestamps a candle is expected to exist at by building a grid, then
+merging real data onto it — anything unmatched gets forward-filled. That grid
+used to be a fixed number of UTC seconds between bars, forever
+(`np.arange(mn, mx + step, step)`). H1/M15 candles are anchored to fixed
+UTC-hour/quarter-hour marks, so this was fine for them. H4/D candles are
+anchored to a local time-of-day instead (the same 5pm America/New_York-style
+rollover convention used elsewhere in this pipeline), which shifts by exactly
+one hour, in UTC terms, at every DST transition — so the old grid silently fell
+out of alignment with real data twice a year, and every bar after that point
+got forward-filled from the last real match instead of matched to its own real
+value. Confirmed directly against real EUR/USD history before fixing anything:
+H1/M15 had zero misaligned rows across their full history; H4/D had ~66%
+misaligned, with the very first bad H4 row landing on 2010-03-14 — the exact
+date the US switched to Daylight Time that year. The grid is now built in
+local wall-clock time and localized per-instant, so it tracks the real DST
+shift instead of assuming one fixed UTC offset holds forever (verified: zero
+misaligned rows across all 17 years of real H4 history, spanning every spring
+and fall transition in that range). Already-ingested forward-filled H4/D
+history in InfluxDB needs a re-run of `forward_fill_flow` (or the batch
+equivalent) to pick up the correction — `ForwardFillInator.pull_data()` always
+re-pulls the full history from `cutoff_timestamp` and re-writes every row,
+so one full run recomputes everything; there's no separate backfill script
+needed.
+
+`swap-rate` is a separate, much simpler pipeline: a single current snapshot of
+long/short financing (rollover) rates per instrument, not a historical time series
+like candlesticks, so there's no ETL/pipeline/QA class hierarchy for it — just
+`SwapRateETL` directly. Downstream, `forex-ML`'s `forex_ml/data/swap_rates.py`
+reads this measurement directly (converting OANDA's annual-rate-as-decimal
+convention to a per-night percentage) to account for the real cost of holding a
+position past the 5pm New York rollover cutoff — both in triple-barrier labeling
+and, via that same module, in `forex-strategy`'s backtest.
+
+`economic-calendar-event` is the one pipeline here NOT sourced from Oanda — economic
+calendar data (scheduled release times, country, impact level, actual/estimate/
+previous values) isn't part of Oanda's API at all, so it comes from
+[Finnhub](https://finnhub.io/), with its own separate API-key credential (see
+"Prerequisites" below). Like swap rates, it's a forward-looking pull over a date
+range rather than an incremental backfill — re-pulling the same rolling window daily
+is cheap and naturally idempotent, and picks up newly-published `actual` values for
+events that already occurred.
+
+**Status: not currently ingested.** `/calendar/economic` returns `403` on
+Finnhub's free tier (confirmed with a valid, working API key — the free plan
+simply doesn't include this endpoint); the paid tier that does is priced well
+outside this project's budget. The code is complete and unit-tested, ready to run
+the moment either a cheaper provider is found or the budget changes — abandoned
+for now on cost, not because anything here is broken.
+
+`positioning-bucket` is back to Oanda's own API/token (the `/v3/instruments/
+{instrument}/orderBook` and `/positionBook` endpoints, reachable with no new auth
+work) — aggregated retail order-book/position-book data, one row per price bucket
+per snapshot rather than a single collapsed "overall % long/short" stat: Oanda's
+per-bucket percentage normalization isn't something to silently reinterpret here,
+so a downstream consumer computes whatever aggregate it actually needs directly
+from the raw buckets. A real snapshot can carry a hundred-plus buckets per
+instrument per book type, a real storage/cardinality cost worth being aware of
+unlike every other measurement in this pipeline.
+
+**Status: not currently ingested.** Confirmed directly against both a practice
+and a live production account/token (the live token independently verified valid
+against other endpoints) that these endpoints reject every request. OANDA
+discontinued orderBook/positionBook entirely as a business decision; the data is
+now only offered through a separate enterprise product priced at $1,850/month
+with a $22,000/year minimum. Abandoned for now on cost, same as the economic
+calendar above — the code is otherwise complete, but there's no plan-upgrade path
+here, only a fundamentally different (and expensive) product.
