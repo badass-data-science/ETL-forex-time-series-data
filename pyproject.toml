@@ -1,12 +1,12 @@
 [project]
 name = "etl-forex-time-series-data"
 version = "0.0.3"
-description = "Fetches OHLCV candlestick, swap-rate, economic calendar, and positioning data and writes it to InfluxDB"
+description = "Fetches forex OHLCV candlestick, swap-rate, economic calendar, and positioning data and writes it to InfluxDB"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [
-    { name = "Badass Data Science" },
+    { name = "Emily Marie Williams" },
 ]
 keywords = ["forex", "etl", "time-series", "oanda", "influxdb", "prefect"]
 classifiers = [
