@@ -6,7 +6,7 @@ Our heroine—a mild-mannered data scientist by day—ruthlessly shorts flailing
 
 So our intrepid heroine built a robust ETL pipeline to perform that exact task. In the future she will use the database this pipeline maintains to generate AI/ML-based forecasting strategies. But this current post is about the pipeline and database themselves:
 
-## Why Forex, and Why Candlesticks
+## Why Candlesticks
 
 Our heroine sources her data from Oanda, a retail Forex broker that exposes a REST API for historical and streaming price data. Oanda provides candlestick (OHLCV) data: for each time interval, the open, high, low, and close prices for both the bid and ask sides of the market, plus volume.
 
