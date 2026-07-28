@@ -4,7 +4,7 @@
 [![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-## Introduction
+## Motivation
 
 Exceptional, scalable data science begins with robust access to high-quality data. The ETL pipeline described below builds and maintains such data infrastructure to support forex time series analysis and predictive modeling.
 
@@ -22,7 +22,7 @@ The whole pipeline is expressed in Prefect workflows to facilitate easy scheduli
 
 Contributing as either a human or an AI? See [`AGENTS.md`](AGENTS.md) for a fast-start orientation and the gotchas that aren't obvious from the code. There's also a [graphify](https://github.com/safishamsi/graphify) knowledge graph of this codebase in `graphify-out/`: open `graph.html` in a browser to explore it interactively, or read `GRAPH_REPORT.md` for the audit report (major nodes, cross-community bridges, and suggested questions).
 
-## Architecture
+## Pipeline flow diagram
 
 ```
 Oanda REST API
