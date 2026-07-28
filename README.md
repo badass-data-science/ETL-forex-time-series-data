@@ -119,10 +119,8 @@ fresh each call) rather than `from database_config import INFLUXDB_URL` — the
 latter freezes the resolved value into the importing module's own namespace the
 moment it's imported (including just pytest collecting a test file), permanently,
 for the life of the process, with no way to substitute different values
-afterward. See `tests/test_secrets_isolation.py` for the regression test and the
-real bug this guards against — a downstream consumer's "flaky" integration test
-turned out to be silently querying this real InfluxDB instead of its intended
-local Docker container, because of exactly this.
+afterward. See `tests/test_secrets_isolation.py` for the regression test that
+guards against this.
 
 ## Running
 
