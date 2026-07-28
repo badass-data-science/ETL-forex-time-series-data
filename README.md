@@ -16,6 +16,8 @@ The pipeline then transforms this retrieved time series data into a form suitabl
 
 Finally, this ETL pipeline loads both the raw and forward-filled time series data into [InfluxDB](https://www.influxdata.com/), a database system designed specifically for storing and rapidly serving time series data.
 
+The whole pipeline is expressed in Prefect workflows to facilitate easy scheduling and monitoring.
+
 ## Fast facts for potential contributors:
 
 Contributing as either a human or an AI? See [`AGENTS.md`](AGENTS.md) for a fast-start orientation and the gotchas that aren't obvious from the code. There's also a [graphify](https://github.com/safishamsi/graphify) knowledge graph of this codebase in `graphify-out/`: open `graph.html` in a browser to explore it interactively, or read `GRAPH_REPORT.md` for the audit report (major nodes, cross-community bridges, and suggested questions).
