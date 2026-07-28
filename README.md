@@ -21,64 +21,8 @@ cross-community bridges, suggested questions).
 
 _PlantUML source: [`documentation/pipeline_flow_diagram.puml`](documentation/pipeline_flow_diagram.puml)._
 
-```
-Oanda REST API
-      │
-      ▼
-CandlestickETL          ← fetches, retries, validates
-      │
-      ▼
-CandlestickRecord       ← Pydantic model; single source of truth for schema
-      │
-      ▼
-CandlestickPipeline     ← orchestrates ETL, QA, InfluxDB write
-      │
-      ▼
-InfluxDB ('candlestick' measurement)
-      │
-      ▼
-ForwardFillInator            ← fills market-closed gaps with last known price;
-                                tags each bar is_forward_filled: True/False
-      │
-      ▼
-ForwardFilledCandlestickRecord    ← Pydantic model for the forward-filled schema
-      │
-      ▼
-InfluxDB ('forward-filled candlestick' measurement)
 
-Oanda REST API
-      │
-      ▼
-SwapRateETL             ← fetches per-instrument long/short financing rates
-      │
-      ▼
-SwapRateRecord          ← Pydantic model; single source of truth for schema
-      │
-      ▼
-InfluxDB ('swap-rate' measurement)
 
-Finnhub API (NOT Oanda -- separate provider/credential)
-      │
-      ▼
-EconomicCalendarETL     ← fetches upcoming scheduled economic release events
-      │
-      ▼
-EconomicCalendarEventRecord   ← Pydantic model; single source of truth for schema
-      │
-      ▼
-InfluxDB ('economic-calendar-event' measurement)
-
-Oanda REST API
-      │
-      ▼
-PositioningETL          ← fetches order-book + position-book snapshots
-      │
-      ▼
-PositioningBucketRecord ← Pydantic model; single source of truth for schema
-      │
-      ▼
-InfluxDB ('positioning-bucket' measurement)
-```
 
 Downstream consumers (e.g. `forex-ML`) can use `is_forward_filled` to distinguish
 real market data from imputed placeholder bars — a forward-filled bar has zero
