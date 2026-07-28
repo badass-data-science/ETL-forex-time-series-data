@@ -98,10 +98,11 @@ that *are* unit tested (all the ETL classes, `models.py`, `InfluxDbTool`,
   collection). See `tests/test_secrets_isolation.py` for the
   regression test and the real incident this guards against.
 - **No external private-repo dependency.** `forex/util/` is a self-contained,
-  in-house copy of the InfluxDB client, AWS secret loader, and time-unit
-  constants this project needs — not a vendored copy of someone else's
-  package. Don't reintroduce an import from outside this repo for these; add
-  to `forex/util/` instead.
+  in-house copy of the InfluxDB client and time-unit constants this project
+  needs — not a vendored copy of someone else's package. Credentials come
+  from environment variables (see the lazy-config bullet above), not a
+  secrets-manager client. Don't reintroduce an import from outside this repo
+  for these; add to `forex/util/` instead.
 - **`CHANGELOG.md` must be updated whenever code changes.** Add an entry
   under `[Unreleased]` (Keep a Changelog categories: Added/Changed/Fixed/
   Removed) describing the change. Version headers correspond to
@@ -157,4 +158,15 @@ that *are* unit tested (all the ETL classes, `models.py`, `InfluxDbTool`,
   not stable across `--update` runs** — Louvain re-clusters from scratch
   each time, so community 3 today is not the same grouping as community 3
   before the last update. Re-derive labels from actual member content after
-  every update rather than assuming an ID's label still fits.
+  every update rather than assuming an ID's label still fits. (3) Diagram/
+  screenshot images (`documentation/images/*.png`) get their own semantic
+  extraction pass and can produce nodes that reference the real code
+  entities they depict — e.g. `knowledge_graph_screenshot.png`'s legend
+  entries pointing back at `CandlestickETL`, `InfluxDbTool`, etc. These are
+  self-referential (the graph depicting itself) and harmless, but they
+  inflate a node's apparent community fan-out — don't read "N communities
+  reference this class" as N genuine architectural relationships without
+  checking whether some of those edges originate from an image of the graph
+  itself. As of the last `--update`, the graph has 418 nodes, 730 edges, and
+  34 communities — these numbers drift on every update; don't hardcode them
+  elsewhere without re-checking `graphify-out/GRAPH_REPORT.md`.

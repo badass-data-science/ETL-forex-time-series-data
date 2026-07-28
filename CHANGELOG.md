@@ -8,6 +8,29 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Changed
+- `README.md` restructured for a dual audience — functional documentation
+  plus a hiring-manager-facing pass demonstrating ETL fluency (Engineering
+  highlights, Architecture walkthrough with an embedded PlantUML pipeline-flow
+  diagram, an environment-variable Prerequisites table, and an embedded
+  screenshot of the codebase's own `graphify` knowledge graph). DST-handling
+  is described as a verified, confirmed design property throughout — not
+  framed as a bug that was fixed.
+- `documentation/blog-post.md` brought back in sync with the current code,
+  README, and knowledge graph: replaced all broken `forex-etl-graph-*.png`
+  references (an old, never-committed graph screenshot) with
+  `documentation/images/knowledge_graph_screenshot.png`; rewrote the
+  Pydantic-model, secrets, and Prefect-orchestration sections to match the
+  current `MeasurementRecord`/`make_ifc()`/env-var code instead of the
+  pre-refactor AWS Secrets Manager and `config_file`-based implementation;
+  added `is_forward_filled`/DST-awareness to the forward-fill section.
+- `graphify-out/` knowledge graph incrementally updated
+  (`/graphify . --update`) to pick up the README/blog-post rewrite and the
+  `XAU_USD` removal below: 367→418 nodes, 739→730 edges, 28→34 communities.
+  New image nodes for `knowledge_graph_screenshot.png` and
+  `pipeline_flow_diagram.png` now reference the real ETL classes they
+  depict.
+
 ### Removed
 - `XAU_USD` (gold) from `TRACKED_INSTRUMENTS` (`candlestick_flow.py`) and the
   mirrored `instrument_list` in `eda_config.py` — this project tracks forex
