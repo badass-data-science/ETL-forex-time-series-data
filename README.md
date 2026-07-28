@@ -21,9 +21,6 @@ cross-community bridges, suggested questions).
 
 _PlantUML source: [`documentation/pipeline_flow_diagram.puml`](documentation/pipeline_flow_diagram.puml)._
 
-
-
-
 Downstream consumers (e.g. `forex-ML`) can use `is_forward_filled` to distinguish
 real market data from imputed placeholder bars — a forward-filled bar has zero
 return and zero volatility by construction, which is otherwise indistinguishable
@@ -151,6 +148,11 @@ graphify-out/          # knowledge graph of this codebase (tracked subset)
 ├── graph.json          # raw graph data
 ├── graph.html           # interactive viz, open in any browser
 └── GRAPH_REPORT.md      # audit report: god nodes, bridges, suggested questions
+
+documentation/
+├── pipeline_flow_diagram.puml   # PlantUML source for the Architecture diagram
+└── images/
+    └── pipeline_flow_diagram.png
 ```
 
 This package has no dependency on any private/internal repo — everything it
