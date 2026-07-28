@@ -22,7 +22,10 @@ The whole pipeline is expressed in Prefect workflows to facilitate easy scheduli
 
 Contributing as either a human or an AI? See [`AGENTS.md`](AGENTS.md) for a fast-start orientation and the gotchas that aren't obvious from the code. There's also a [graphify](https://github.com/safishamsi/graphify) knowledge graph of this codebase in `graphify-out/`: open `graph.html` in a browser to explore it interactively, or read `GRAPH_REPORT.md` for the audit report (major nodes, cross-community bridges, and suggested questions).
 
-## Pipeline flow diagram
+## Pipeline flow diagrams
+
+![flow-diagrams](documentation/images/pipeline-flow-diagram.png)
+
 
 ```
 Oanda REST API
