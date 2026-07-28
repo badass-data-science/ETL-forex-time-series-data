@@ -110,7 +110,7 @@ You also need:
 | `INFLUXDB_BUCKET` | Required | same | InfluxDB bucket name |
 | `FINNHUB_API_KEY` | Required only to run `economic_calendar_flow` | `finnhub_config` | Finnhub API key — note the free tier does **not** include the `/calendar/economic` endpoint (confirmed — returns `403`), so a working key alone isn't enough. See "Architecture" above |
 
-You'll also need a running **InfluxDB** instance.
+Additionally, you will also need a running **InfluxDB** instance.
 
 `database_config`/`finnhub_config`/`oanda_config` all lazy-load these environment
 variables via a module-level `__getattr__` triggered on attribute access. Every
@@ -124,7 +124,7 @@ guards against this.
 
 ## Running
 
-There are two entry points: a one-off run for a single instrument, and a scheduled deployment that covers all 14 tracked instruments across four granularities.
+There are two entry points: a one-off run for a single instrument, and a scheduled deployment that covers all 13 tracked instruments across four granularities.
 
 ### Option 1 — One-off run (no Prefect server needed)
 
@@ -200,15 +200,15 @@ feeds it:
 
 | Deployment | Cron | Granularity | Instruments |
 |---|---|---|---|
-| `candlestick-D` | `5 0 * * *` | D | all 14 tracked |
-| `candlestick-H1` | `5 * * * *` | H1 | all 14 tracked |
-| `candlestick-H4` | `20 * * * *` | H4 | all 14 tracked |
-| `candlestick-M15` | `2,17,32,47 * * * *` | M15 | all 14 tracked |
-| `forward-fill-D` | `15 0 * * *` | D | all 14 tracked |
-| `forward-fill-H1` | `15 * * * *` | H1 | all 14 tracked |
-| `forward-fill-H4` | `30 * * * *` | H4 | all 14 tracked |
-| `forward-fill-M15` | `12,27,42,57 * * * *` | M15 | all 14 tracked |
-| `swap-rate-D` | `45 20 * * *` | n/a | all 14 tracked |
+| `candlestick-D` | `5 0 * * *` | D | all 13 tracked |
+| `candlestick-H1` | `5 * * * *` | H1 | all 13 tracked |
+| `candlestick-H4` | `20 * * * *` | H4 | all 13 tracked |
+| `candlestick-M15` | `2,17,32,47 * * * *` | M15 | all 13 tracked |
+| `forward-fill-D` | `15 0 * * *` | D | all 13 tracked |
+| `forward-fill-H1` | `15 * * * *` | H1 | all 13 tracked |
+| `forward-fill-H4` | `30 * * * *` | H4 | all 13 tracked |
+| `forward-fill-M15` | `12,27,42,57 * * * *` | M15 | all 13 tracked |
+| `swap-rate-D` | `45 20 * * *` | n/a | all 13 tracked |
 
 `candlestick-H4`/`forward-fill-H4` poll every hour rather than every 4 hours at a
 guessed boundary offset -- OANDA's exact H4 candle-close alignment (UTC vs.
@@ -217,11 +217,10 @@ NY-timezone-anchored, and whether/how it shifts with DST) isn't confirmed, and
 polling more often than a new candle actually closes just finds nothing new rather
 than risking a wrong guess silently missing candles for hours.
 
-The 14 tracked instruments are: EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD,
-NZD/USD (the seven FX majors), XAU/USD (gold, added 2026-07-14 to test whether a
-different asset class carries more signal than heavily-arbitraged FX majors), and
-six FX crosses added the same window for the same reason: GBP/JPY, EUR/JPY, AUD/JPY,
-EUR/GBP, AUD/NZD, EUR/CHF.
+The tracked instruments are: EUR/USD, USD/JPY, GBP/USD, USD/CHF, USD/CAD, AUD/USD,
+NZD/USD (the seven FX majors), and six FX crosses added 2026-07-14 to explore
+whether less USD-major-crowded markets carry more signal than heavily-arbitraged
+FX majors: GBP/JPY, EUR/JPY, AUD/JPY, EUR/GBP, AUD/NZD, EUR/CHF.
 
 `swap-rate-D` runs at 20:45 UTC — about 15 minutes before the 5pm New York rollover
 cutoff (a fixed UTC time, not DST-aware, the same simplification forex-ML's own

@@ -8,6 +8,14 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Removed
+- `XAU_USD` (gold) from `TRACKED_INSTRUMENTS` (`candlestick_flow.py`) and the
+  mirrored `instrument_list` in `eda_config.py` — this project tracks forex
+  pairs only; gold was a commodity CFD included to test whether a different
+  asset class carried more signal, but doesn't belong in a forex-only story.
+  13 instruments tracked now, down from 14; `README.md` updated to match
+  throughout.
+
 ## [0.0.3]
 
 ### Added

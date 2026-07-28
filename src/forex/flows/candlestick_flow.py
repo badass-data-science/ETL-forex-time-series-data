@@ -51,11 +51,11 @@ def insert_to_influxdb(records: list[dict]) -> None:
     logger.info('Inserted %d records', len(records))
 
 
-# Not just "major pairs" any more (2026-07-14): XAU_USD is a commodity CFD, not a
-# currency pair, and the crosses below aren't majors -- both added to explore
-# whether less USD-major-crowded markets carry more signal (see forex-ML's
-# README). Renamed from MAJOR_PAIRS to reflect that, since it's the single
-# instrument list forward_fill_flow/swap_rate_flow/positioning_flow all default to.
+# Not just "major pairs" any more (2026-07-14): the six crosses below aren't
+# majors -- added to explore whether less USD-major-crowded markets carry more
+# signal (see forex-ML's README). Renamed from MAJOR_PAIRS to reflect that,
+# since it's the single instrument list forward_fill_flow/swap_rate_flow/
+# positioning_flow all default to.
 TRACKED_INSTRUMENTS: list[str] = [
     'EUR_USD',
     'USD_JPY',
@@ -64,7 +64,6 @@ TRACKED_INSTRUMENTS: list[str] = [
     'USD_CAD',
     'AUD_USD',
     'NZD_USD',
-    'XAU_USD',
     'GBP_JPY',
     'EUR_JPY',
     'AUD_JPY',
