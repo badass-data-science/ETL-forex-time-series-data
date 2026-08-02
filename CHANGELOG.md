@@ -38,6 +38,16 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
   asset class carried more signal, but doesn't belong in a forex-only story.
   13 instruments tracked now, down from 14; `README.md` updated to match
   throughout.
+- `OANDA_DATE_TIME_FORMAT` environment variable — Oanda's
+  `Accept-Datetime-Format` header value is always `'unix'`, so it's now
+  hard-coded in `forex/oanda/headers.py` instead of being read from the
+  environment. No longer a required env var in `oanda_config.py` or
+  `README.md`'s Prerequisites table.
+- `SwapRateETL.get_account_id()`'s `/v3/accounts` auto-resolution fallback —
+  `OANDA_ACCOUNT_ID` is now a required env var (`oanda_config.py`), so
+  `get_account_id()` just returns it directly instead of falling back to an
+  extra API call when unset. `README.md`'s Prerequisites table updated to
+  match.
 
 ## [0.0.3]
 

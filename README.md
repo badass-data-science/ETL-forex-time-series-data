@@ -224,8 +224,7 @@ You also need:
 |---|---|---|---|
 | `OANDA_SERVER` | Required | `CandlestickETL`, `SwapRateETL`, `PositioningETL` | Oanda REST API base URL |
 | `OANDA_TOKEN` | Required | same | Oanda API bearer token |
-| `OANDA_DATE_TIME_FORMAT` | Required | same | Value for Oanda's `Accept-Datetime-Format` header |
-| `OANDA_ACCOUNT_ID` | Optional | `SwapRateETL` | Account ID for the financing-rate endpoint; if unset, resolved automatically via `/v3/accounts` |
+| `OANDA_ACCOUNT_ID` | Required | `SwapRateETL` | Account ID for the financing-rate endpoint |
 | `INFLUXDB_URL` | Required | `database_config` (all flows) | InfluxDB connection URL |
 | `INFLUXDB_TOKEN` | Required | same | InfluxDB auth token |
 | `INFLUXDB_ORG` | Required | same | InfluxDB organization |
@@ -308,7 +307,7 @@ prefect server start
 ```
 
 Then start the serve process, which registers and runs all nine deployments
-(requires `OANDA_SERVER`/`OANDA_TOKEN`/`OANDA_DATE_TIME_FORMAT` and the InfluxDB
+(requires `OANDA_SERVER`/`OANDA_TOKEN` and the InfluxDB
 env vars from "Prerequisites" above to already be set in the environment):
 
 ```

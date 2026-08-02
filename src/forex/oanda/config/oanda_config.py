@@ -1,7 +1,7 @@
 import os
 
-_REQUIRED_KEYS = frozenset(['OANDA_SERVER', 'OANDA_TOKEN', 'OANDA_DATE_TIME_FORMAT'])
-_OPTIONAL_KEYS = frozenset(['OANDA_ACCOUNT_ID'])
+_REQUIRED_KEYS = frozenset(['OANDA_SERVER', 'OANDA_TOKEN', 'OANDA_ACCOUNT_ID'])
+_OPTIONAL_KEYS: frozenset[str] = frozenset()
 
 
 def __getattr__(name):
