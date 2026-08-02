@@ -51,7 +51,8 @@ mypy src/forex tests           # type check
 ```
 
 All three are configured in `pyproject.toml` (`[tool.ruff]`, `[tool.mypy]`)
-and run in CI as a separate `lint` job. `line-length = 120`, not the
+and run in CI as a separate `lint` job — `README.md` carries Ruff and mypy
+badges alongside the CI status badge to reflect this. `line-length = 120`, not the
 ruff/black default of 88 — this codebase's comments and docstrings are
 deliberately dense/explanatory, and reflowing them to 88 columns would make
 them harder to read, not easier. `SIM103` is disabled for the same
