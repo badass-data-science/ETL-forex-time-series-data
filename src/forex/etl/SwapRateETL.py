@@ -67,16 +67,8 @@ class SwapRateETL:
 
     def get_account_id(self) -> str:
         """The financing-rate endpoint is scoped under /v3/accounts/{accountID}/
-        instruments. Uses OANDA_ACCOUNT_ID if set (though no other code in this repo
-        currently reads it); otherwise resolves it via /v3/accounts, assuming one
-        account per API token -- the same implicit assumption the rest of this
-        pipeline already makes via a single Bearer token. Takes the first account if
-        more than one exists."""
-        account_id = oanda_config.OANDA_ACCOUNT_ID
-        if account_id:
-            return account_id
-        rj = self._fetch_from_api(oanda_config.OANDA_SERVER + '/v3/accounts')
-        return rj['accounts'][0]['id']
+        instruments."""
+        return oanda_config.OANDA_ACCOUNT_ID
 
     def _instruments_url(self, account_id: str, instruments: list[str]) -> str:
         return (

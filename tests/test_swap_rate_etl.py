@@ -32,27 +32,10 @@ def test_records_from_instruments_response_handles_an_empty_list():
     assert _records_from_instruments_response({'instruments': []}, timestamp=0) == []
 
 
-def test_get_account_id_uses_config_value_when_present(monkeypatch):
+def test_get_account_id_uses_config_value(monkeypatch):
     monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', '001-001-1234567-001', raising=False)
     etl = SwapRateETL(['EUR/USD'])
     assert etl.get_account_id() == '001-001-1234567-001'
-
-
-def test_get_account_id_resolves_via_api_when_absent(monkeypatch):
-    monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', None, raising=False)
-    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
-    etl = SwapRateETL(['EUR/USD'])
-
-    calls = []
-
-    def fake_fetch(url):
-        calls.append(url)
-        return {'accounts': [{'id': '001-001-7654321-001'}, {'id': '001-001-9999999-002'}]}
-
-    monkeypatch.setattr(etl, '_fetch_from_api', fake_fetch)
-
-    assert etl.get_account_id() == '001-001-7654321-001'  # first account, if more than one exists
-    assert calls == ['https://example.test/v3/accounts']
 
 
 def test_compute_swap_rates_populates_records_from_the_api_response(monkeypatch):
@@ -113,7 +96,6 @@ def test_get_instrument_financing_falls_back_to_per_instrument_when_batch_404s(m
 def test_fit_produces_valid_influxdb_dicts(monkeypatch):
     monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
     monkeypatch.setattr(oanda_config, 'OANDA_TOKEN', 'fake', raising=False)
-    monkeypatch.setattr(oanda_config, 'OANDA_DATE_TIME_FORMAT', 'UNIX', raising=False)
     monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', '001-001-1234567-001', raising=False)
     etl = SwapRateETL(['EUR/USD'])
 
