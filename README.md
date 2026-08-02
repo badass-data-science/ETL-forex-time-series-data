@@ -1,6 +1,8 @@
 # ETL Pipeline for Forex Time Series Data
 
 [![CI](https://github.com/badass-data-science/ETL-forex-time-series-data/actions/workflows/ci.yml/badge.svg)](https://github.com/badass-data-science/ETL-forex-time-series-data/actions/workflows/ci.yml)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Checked with mypy](https://www.mypy-lang.org/static/mypy_badge.svg)](https://mypy-lang.org/)
 [![Python 3.11 | 3.12](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 

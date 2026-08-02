@@ -8,6 +8,11 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Added
+- Ruff and mypy badges to `README.md`, alongside the existing CI status,
+  Python version, and license badges — makes the lint/type-check tooling
+  already configured in `pyproject.toml` and run in CI visible at a glance.
+
 ### Changed
 - `README.md` restructured for a dual audience — functional documentation
   plus a hiring-manager-facing pass demonstrating ETL fluency (Engineering
