@@ -68,11 +68,11 @@ class SwapRateETL:
     def get_account_id(self) -> str:
         """The financing-rate endpoint is scoped under /v3/accounts/{accountID}/
         instruments."""
-        return oanda_config.OANDA_ACCOUNT_ID
+        return oanda_config.OANDA_LIVE_ACCOUNT_ID
 
     def _instruments_url(self, account_id: str, instruments: list[str]) -> str:
         return (
-            oanda_config.OANDA_SERVER
+            oanda_config.OANDA_LIVE_SERVER
             + '/v3/accounts/'
             + account_id
             + '/instruments?instruments='

@@ -8,6 +8,12 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Changed
+- Renamed the OANDA credential env vars `OANDA_SERVER`/`OANDA_TOKEN`/
+  `OANDA_ACCOUNT_ID` to `OANDA_LIVE_SERVER`/`OANDA_LIVE_TOKEN`/
+  `OANDA_LIVE_ACCOUNT_ID` (`oanda_config.py` and every module/test that reads
+  them).
+
 ### Added
 - Ruff and mypy badges to `README.md`, alongside the existing CI status,
   Python version, and license badges — makes the lint/type-check tooling

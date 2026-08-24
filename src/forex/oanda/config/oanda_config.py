@@ -1,6 +1,6 @@
 import os
 
-_REQUIRED_KEYS = frozenset(['OANDA_SERVER', 'OANDA_TOKEN', 'OANDA_ACCOUNT_ID'])
+_REQUIRED_KEYS = frozenset(['OANDA_LIVE_SERVER', 'OANDA_LIVE_TOKEN', 'OANDA_LIVE_ACCOUNT_ID'])
 _OPTIONAL_KEYS: frozenset[str] = frozenset()
 
 

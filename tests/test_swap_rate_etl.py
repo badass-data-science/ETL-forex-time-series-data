@@ -33,14 +33,14 @@ def test_records_from_instruments_response_handles_an_empty_list():
 
 
 def test_get_account_id_uses_config_value(monkeypatch):
-    monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', '001-001-1234567-001', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_ACCOUNT_ID', '001-001-1234567-001', raising=False)
     etl = SwapRateETL(['EUR/USD'])
     assert etl.get_account_id() == '001-001-1234567-001'
 
 
 def test_compute_swap_rates_populates_records_from_the_api_response(monkeypatch):
-    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
-    monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', '001-001-1234567-001', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_SERVER', 'https://example.test', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_ACCOUNT_ID', '001-001-1234567-001', raising=False)
     etl = SwapRateETL(['EUR/USD', 'USD/JPY'])
 
     def fake_fetch(url):
@@ -67,8 +67,8 @@ def test_get_instrument_financing_falls_back_to_per_instrument_when_batch_404s(m
     instrument in the same batch returns 200 individually). Without a fallback,
     one not-yet-tradeable instrument would silently block collecting real rates
     for everything else in the batch too."""
-    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
-    monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', '001-001-1234567-001', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_SERVER', 'https://example.test', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_ACCOUNT_ID', '001-001-1234567-001', raising=False)
     etl = SwapRateETL(['EUR/USD', 'XAU/USD', 'USD/JPY'])
 
     calls = []
@@ -94,9 +94,9 @@ def test_get_instrument_financing_falls_back_to_per_instrument_when_batch_404s(m
 
 
 def test_fit_produces_valid_influxdb_dicts(monkeypatch):
-    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
-    monkeypatch.setattr(oanda_config, 'OANDA_TOKEN', 'fake', raising=False)
-    monkeypatch.setattr(oanda_config, 'OANDA_ACCOUNT_ID', '001-001-1234567-001', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_SERVER', 'https://example.test', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_TOKEN', 'fake', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_ACCOUNT_ID', '001-001-1234567-001', raising=False)
     etl = SwapRateETL(['EUR/USD'])
 
     def fake_fetch(url):

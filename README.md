@@ -224,9 +224,9 @@ You also need:
 
 | Environment variable | Required? | Read by | What it is |
 |---|---|---|---|
-| `OANDA_SERVER` | Required | `CandlestickETL`, `SwapRateETL`, `PositioningETL` | Oanda REST API base URL |
-| `OANDA_TOKEN` | Required | same | Oanda API bearer token |
-| `OANDA_ACCOUNT_ID` | Required | `SwapRateETL` | Account ID for the financing-rate endpoint |
+| `OANDA_LIVE_SERVER` | Required | `CandlestickETL`, `SwapRateETL`, `PositioningETL` | Oanda REST API base URL |
+| `OANDA_LIVE_TOKEN` | Required | same | Oanda API bearer token |
+| `OANDA_LIVE_ACCOUNT_ID` | Required | `SwapRateETL` | Account ID for the financing-rate endpoint |
 | `INFLUXDB_URL` | Required | `database_config` (all flows) | InfluxDB connection URL |
 | `INFLUXDB_TOKEN` | Required | same | InfluxDB auth token |
 | `INFLUXDB_ORG` | Required | same | InfluxDB organization |
@@ -309,7 +309,7 @@ prefect server start
 ```
 
 Then start the serve process, which registers and runs all nine deployments
-(requires `OANDA_SERVER`/`OANDA_TOKEN` and the InfluxDB
+(requires `OANDA_LIVE_SERVER`/`OANDA_LIVE_TOKEN` and the InfluxDB
 env vars from "Prerequisites" above to already be set in the environment):
 
 ```
