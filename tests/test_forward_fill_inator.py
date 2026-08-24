@@ -189,6 +189,41 @@ class TestDstAwareGrid:
             )
 
 
+class _FakeIfc:
+    """Minimal stand-in for InfluxDbTool -- only the one method
+    get_last_forward_filled_time() actually calls on it. Mirrors
+    test_candlestick_etl.py's _FakeIfc for the analogous
+    get_max_previous_time() tests."""
+
+    def __init__(self, df: pd.DataFrame) -> None:
+        self._df = df
+
+    def run_flux_query_on_forex_database_and_get_dataframe(self, query: str) -> pd.DataFrame:
+        return self._df
+
+
+class TestGetLastForwardFilledTime:
+    def test_resumes_from_stored_max_minus_lookback_buffer(self):
+        inator = ForwardFillInator('EUR/USD', 'H1', ifc=_FakeIfc(pd.DataFrame({'unix_epoch_s': [1_700_000_000]})))
+        inator.get_last_forward_filled_time()
+        assert inator.cutoff_timestamp == 1_700_000_000 - ForwardFillInator.RESUME_LOOKBACK_SECONDS
+
+    def test_keeps_default_when_nothing_forward_filled_yet(self):
+        inator = ForwardFillInator('EUR/USD', 'H1', ifc=_FakeIfc(pd.DataFrame({'unix_epoch_s': []})))
+        default_cutoff = inator.cutoff_timestamp
+        inator.get_last_forward_filled_time()
+        assert inator.cutoff_timestamp == default_cutoff
+
+    def test_never_moves_cutoff_earlier_than_the_constructor_default(self):
+        # A stored max so close to epoch that max - lookback would undercut
+        # whatever cutoff_timestamp the caller explicitly asked for.
+        inator = ForwardFillInator(
+            'EUR/USD', 'H1', ifc=_FakeIfc(pd.DataFrame({'unix_epoch_s': [100]})), cutoff_timestamp=1_000_000_000
+        )
+        inator.get_last_forward_filled_time()
+        assert inator.cutoff_timestamp == 1_000_000_000
+
+
 class TestMakeTheInfluxDbDict:
     def test_records_carry_the_forward_filled_flag_and_expected_schema(self):
         start = datetime.datetime(2024, 1, 2, 9, 0, tzinfo=TZ)

@@ -8,6 +8,15 @@ Version headers below correspond to the `version` field in `pyproject.toml`.
 
 ## [Unreleased]
 
+### Added
+- `ForwardFillInator.get_last_forward_filled_time()` -- resumes from the most
+  recently forward-filled timestamp already in InfluxDB for an instrument/
+  granularity, mirroring `CandlestickETL.get_max_previous_time()`. Without
+  it, every `fit()` call re-pulled and re-wrote the *entire* history back to
+  `cutoff_timestamp` (11+ years -- ~291K rows for a single M15 instrument)
+  regardless of what had already been written; now it only re-processes a
+  ~21-day buffer plus whatever's genuinely new.
+
 ### Changed
 - Renamed the OANDA credential env vars `OANDA_SERVER`/`OANDA_TOKEN`/
   `OANDA_ACCOUNT_ID` to `OANDA_LIVE_SERVER`/`OANDA_LIVE_TOKEN`/

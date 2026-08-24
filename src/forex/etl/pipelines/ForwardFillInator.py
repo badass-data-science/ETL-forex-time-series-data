@@ -1,3 +1,4 @@
+import datetime
 import logging
 from zoneinfo import ZoneInfo
 
@@ -15,6 +16,16 @@ logger = logging.getLogger(__name__)
 class ForwardFillInator:
     candlestick_part_list = ['open', 'low', 'high', 'close']
 
+    # How far before the last forward-filled timestamp already in InfluxDB to
+    # re-pull real candles from, when resuming (get_last_forward_filled_time()) --
+    # not a boundary-precision offset, just a generous buffer so pull_data()'s
+    # window always contains at least one real candle before the resume point
+    # (perform_time_calculations() unconditionally drops the first row it's
+    # given -- nothing to compute a lagged-timestamp diff against -- so without
+    # a buffer, the resume point itself would be lost) and comfortably spans
+    # the regular Fri-17:00->Sun-17:00 weekly closure or a longer holiday gap.
+    RESUME_LOOKBACK_SECONDS = 21 * 24 * 60 * 60  # 21 days
+
     def __init__(
         self,
         instrument: str,
@@ -31,6 +42,40 @@ class ForwardFillInator:
         self.cutoff_timestamp = cutoff_timestamp
         self.critical_timezone_str = critical_timezone_str
         self.critical_timezone = ZoneInfo(critical_timezone_str)
+
+    def get_last_forward_filled_time(self) -> None:
+        """Resume from the most recently forward-filled timestamp already
+        written for this instrument/granularity, mirroring CandlestickETL.
+        get_max_previous_time() -- without this, every run re-pulls and
+        re-writes the *entire* history back to cutoff_timestamp (11+ years,
+        hundreds of thousands of rows for the finer granularities) instead of
+        just what's changed since the last run. Leaves cutoff_timestamp at
+        its constructor default when nothing's been forward-filled yet (the
+        first run for a pair), since there's no watermark to resume from.
+        """
+        assert self.ifc is not None, (
+            'get_last_forward_filled_time() requires a real InfluxDbTool -- pass a live one, not None'
+        )
+        query = f'''
+        from(bucket: "{self.INFLUXDB_BUCKET}")
+          |> range(start: 0)
+          |> filter(fn: (r) => r._measurement == "forward-filled candlestick")
+          |> filter(fn: (r) => r.instrument == "{self.instrument}")
+          |> filter(fn: (r) => r.granularity == "{self.granularity}")
+          |> keep(columns: ["granularity", "instrument", "_time"])
+          |> group(columns: ["granularity", "instrument"])
+          |> max(column: "_time")
+        '''
+        df_max_time = self.ifc.run_flux_query_on_forex_database_and_get_dataframe(query)
+        if len(df_max_time.index) > 0:
+            last_forward_filled = int(df_max_time['unix_epoch_s'].iloc[0])
+            self.cutoff_timestamp = max(self.cutoff_timestamp, last_forward_filled - self.RESUME_LOOKBACK_SECONDS)
+            logger.info(
+                'Resuming forward-fill for %s %s from %s',
+                self.instrument,
+                self.granularity,
+                datetime.datetime.fromtimestamp(self.cutoff_timestamp, tz=self.critical_timezone),
+            )
 
     def pull_data(self) -> None:
         assert self.ifc is not None, 'pull_data() requires a real InfluxDbTool -- pass a live one, not None'
@@ -255,6 +300,7 @@ class ForwardFillInator:
         logger.info('Prepared %d forward-filled records for InfluxDB', len(self.to_influx_list))
 
     def fit(self) -> None:
+        self.get_last_forward_filled_time()
         self.pull_data()
         self.perform_mid_calculations()
         self.perform_spread_calculations()
