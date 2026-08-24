@@ -87,7 +87,7 @@ class CandlestickETL:
 
     def get_instrument_candlesticks(self, end_date: float) -> dict:
         url = (
-            oanda_config.OANDA_SERVER
+            oanda_config.OANDA_LIVE_SERVER
             + '/v3/instruments/'
             + self.instrument
             + '/candles?count='

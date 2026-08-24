@@ -4,7 +4,7 @@ Start all scheduled forex deployments.
 Usage:
     python -m forex.flows.serve
 
-Requires OANDA_SERVER and OANDA_TOKEN (plus the InfluxDB
+Requires OANDA_LIVE_SERVER and OANDA_LIVE_TOKEN (plus the InfluxDB
 env vars database_config reads) to be set in the environment -- see README.md's
 "Prerequisites" section.
 

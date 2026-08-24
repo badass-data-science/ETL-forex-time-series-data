@@ -10,11 +10,11 @@ from forex.oanda.config import oanda_config
 
 @pytest.fixture(autouse=True)
 def _oanda_and_influx_env(monkeypatch):
-    """CandlestickETL builds URLs/queries from oanda_config.OANDA_SERVER and
+    """CandlestickETL builds URLs/queries from oanda_config.OANDA_LIVE_SERVER and
     database_config.INFLUXDB_BUCKET even when the test only cares about pure
     dataframe logic -- set both for every test in this file rather than
     repeating it per-test."""
-    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_SERVER', 'https://example.test', raising=False)
     monkeypatch.setattr(database_config, 'INFLUXDB_BUCKET', 'test-bucket', raising=False)
 
 
@@ -31,7 +31,7 @@ def _candle(time_s: int, complete: bool = True, bid_o: str = '1.1000', ask_o: st
 
 
 def test_get_instrument_candlesticks_builds_the_expected_url(monkeypatch):
-    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_SERVER', 'https://example.test', raising=False)
     etl = CandlestickETL('EUR/USD', 'H1', ifc=None, count=500, price_types='BA')
 
     captured = {}

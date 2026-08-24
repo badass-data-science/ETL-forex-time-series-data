@@ -60,10 +60,10 @@ class PositioningETL:
         return r.json()
 
     def get_order_book(self, instrument: str) -> dict:
-        return self._fetch_from_api(oanda_config.OANDA_SERVER + '/v3/instruments/' + instrument + '/orderBook')
+        return self._fetch_from_api(oanda_config.OANDA_LIVE_SERVER + '/v3/instruments/' + instrument + '/orderBook')
 
     def get_position_book(self, instrument: str) -> dict:
-        return self._fetch_from_api(oanda_config.OANDA_SERVER + '/v3/instruments/' + instrument + '/positionBook')
+        return self._fetch_from_api(oanda_config.OANDA_LIVE_SERVER + '/v3/instruments/' + instrument + '/positionBook')
 
     def compute_positioning(self) -> None:
         self.records: list[dict] = []

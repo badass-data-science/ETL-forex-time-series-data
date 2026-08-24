@@ -84,7 +84,7 @@ def test_compute_positioning_fetches_both_books_for_every_instrument(monkeypatch
 
 
 def test_get_order_book_and_position_book_build_the_expected_urls(monkeypatch):
-    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_SERVER', 'https://example.test', raising=False)
     etl = PositioningETL(['EUR/USD'])
 
     captured = {}
@@ -103,8 +103,8 @@ def test_get_order_book_and_position_book_build_the_expected_urls(monkeypatch):
 
 
 def test_fit_produces_valid_influxdb_dicts(monkeypatch):
-    monkeypatch.setattr(oanda_config, 'OANDA_SERVER', 'https://example.test', raising=False)
-    monkeypatch.setattr(oanda_config, 'OANDA_TOKEN', 'fake', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_SERVER', 'https://example.test', raising=False)
+    monkeypatch.setattr(oanda_config, 'OANDA_LIVE_TOKEN', 'fake', raising=False)
     etl = PositioningETL(['EUR/USD'])
 
     monkeypatch.setattr(etl, 'get_order_book', lambda instrument: _ORDER_BOOK_RESPONSE)
